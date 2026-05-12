@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<style>
+.profile-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 30px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+.profile-avatar {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 36px;
+    font-weight: bold;
+}
+.profile-info h2 {
+    margin: 0 0 5px 0;
+    font-size: 28px;
+}
+.profile-role {
+    margin: 0;
+    font-size: 16px;
+    opacity: 0.9;
+}
+</style>
+{% endblock %}
+
+{% block title %}个人中心 - 日志分析系统{% endblock %}
+
+{% block content %}
+<div class="profile-header">
+    <div class="profile-avatar" id="profileAvatar"></div>
+    <div class="profile-info">
+        <h2 id="profileDisplayName"></h2>
+        <p class="profile-role" id="profileRole"></p>
+    </div>
+</div>
+<div class="card">
+    <div class="card-header">个人信息</div>
+    <div class="card-body">
+        <div style="max-width: 600px;">
+            <h3 style="margin-bottom: 20px;">修改个人信息</h3>
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: bold;">用户名</label>
+                <input type="text" id="profileUsername" disabled style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; background: #f5f5f5;">
+            </div>
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: bold;">邮箱</label>
+                <input type="email" id="profileEmail" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+            </div>
+            <button class="btn btn-primary" onclick="updateProfile()" style="margin-right: 10px;">保存修改</button>
+            
+            <hr style="margin: 30px 0;">
+            
+            <h3 style="margin-bottom: 20px;">修改密码</h3>
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: bold;">原密码</label>
+                <input type="password" id="oldPassword" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+            </div>
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: bold;">新密码</label>
+                <input type="password" id="newPassword" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+            </div>
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: bold;">确认新密码</label>
+                <input type="password" id="confirmPassword" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+            </div>
+            <button class="btn btn-success" onclick="changePassword()">修改密码</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 加载用户信息
+    async function loadProfile() {
+        try {
+            const response = await fetch(`${API_BASE}/auth/profile`, {
+                credentials: 'include'  // 添加这一行，确保发送 cookies
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                document.getElementById('profileUsername').value = data.username;
+                document.getElementById('profileEmail').value = data.email || '';
+                // 更新顶部展示
+                document.getElementById('profileDisplayName').textContent = data.username;
+                document.getElementById('profileAvatar').textContent = data.username.charAt(0).toUpperCase();
+                document.getElementById('profileRole').textContent = data.role === 'admin' ? '👑 管理员' : '👤 普通用户';
+            }
+        } catch (error) {
+            console.error('加载个人信息失败:', error);
+        }
+    }
+
+    // 更新个人信息
+    async function updateProfile() {
+        const email = document.getElementById('profileEmail').value.trim();
+
+        try {
+            showMessage('正在更新个人信息...', 'info');
+            const response = await fetch(`${API_BASE}/auth/profile`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',  // 添加这一行，确保发送 cookies
+                body: JSON.stringify({ email: email })
+            });
+
+            const data = await response.json();
+            
+            // 兼容两种返回格式：{success: true} 或 {message: "修改成功"}
+            if (data.success || data.message) {
+                showMessage('个人信息更新成功', 'success');
+                // 刷新页面显示最新信息
+                loadProfile();
+            } else {
+                showMessage('更新失败: ' + (data.error || '未知错误'), 'error');
+            }
+        } catch (error) {
+            console.error('更新失败:', error);
+            showMessage('更新失败: ' + error.message, 'error');
+        }
+    }
+
+    // 修改密码
+    async function changePassword() {
+        const oldPassword = document.getElementById('oldPassword').value;
+        const newPassword = document.getElementById('newPassword').value;
+        const confirmPassword = document.getElementById('confirmPassword').value;
+
+        if (!oldPassword || !newPassword || !confirmPassword) {
+            showMessage('请填写所有密码字段', 'warning');
+            return;
+        }
+
+        if (newPassword !== confirmPassword) {
+            showMessage('两次输入的新密码不一致', 'warning');
+            return;
+        }
+
+        if (newPassword.length < 6) {
+            showMessage('新密码长度不能少于6位', 'warning');
+            return;
+        }
+
+        try {
+            showMessage('正在修改密码...', 'info');
+            const response = await fetch(`${API_BASE}/auth/password`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',  // 添加这一行，确保发送 cookies
+                body: JSON.stringify({
+                    old_password: oldPassword,
+                    new_password: newPassword
+                })
+            });
+
+            const data = await response.json();
+            
+            // 兼容两种返回格式：{success: true} 或 {message: "密码修改成功"}
+            if (data.success || data.message) {
+                showMessage('密码修改成功，请重新登录', 'success');
+                // 清空表单
+                document.getElementById('oldPassword').value = '';
+                document.getElementById('newPassword').value = '';
+                document.getElementById('confirmPassword').value = '';
+                // 跳转到登录页
+                setTimeout(() => {
+                    window.location.href = '/login';
+                }, 2000);
+            } else {
+                showMessage('修改失败: ' + (data.error || '未知错误'), 'error');
+            }
+        } catch (error) {
+            console.error('修改密码失败:', error);
+            showMessage('修改失败', 'error');
+        }
+    }
+
+    // 页面加载
+    document.addEventListener('DOMContentLoaded', function() {
+        loadProfile();
+    });
+</script>
+{% endblock %}

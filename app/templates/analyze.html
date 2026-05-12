@@ -1,0 +1,472 @@
+{% extends "base.html" %}
+
+{% block title %}🤖 ML 异常检测 - 日志分析系统{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header"> 🤖 ML 异常检测</div>
+    <div class="card-body">
+        <div class="filter-bar">
+            <input type="text" id="searchBox" class="search-box" placeholder="搜索 IP 或 URL..." onkeyup="searchResults()">
+            <select id="riskFilter" onchange="loadResults()">
+                <option value="">所有风险等级</option>
+                <option value="high">高风险</option>
+                <option value="medium">中风险</option>
+                <option value="low">低风险</option>
+            </select>
+            <select id="attackFilter" onchange="loadResults()">
+                <option value="">所有攻击类型</option>
+                <option value="SQL 注入">SQL 注入</option>
+                <option value="XSS">XSS</option>
+                <option value="目录遍历">目录遍历</option>
+                <option value="命令注入">命令注入</option>
+            </select>
+            <button class="btn btn-primary" onclick="showBatchAnalysisModal()">批量分析</button>
+            <button class="btn btn-success" onclick="showMLDetectModal()">🤖 ML 异常检测</button>
+        </div>
+        
+        <!-- ML 检测结果展示区域 -->
+        <div id="mlResultsSection" style="display: none; margin-bottom: 20px; padding: 20px; background: #f0f4ff; border-radius: 10px; border-left: 4px solid #667eea;">
+            <h3 style="margin-bottom: 15px;">🤖 机器学习异常检测结果</h3>
+            <div class="stats-grid" style="margin-bottom: 15px;">
+                <div class="stat-card">
+                    <div class="stat-number" id="mlTotalEntries">0</div>
+                    <div class="stat-label">总条目数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="mlAnomalies">0</div>
+                    <div class="stat-label">异常数量</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="mlAnomalyRate">0%</div>
+                    <div class="stat-label">异常率</div>
+                </div>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <button class="btn btn-primary" onclick="compareMLResults()">📊 ML vs 规则对比</button>
+                <button class="btn btn-danger" onclick="hideMLResults()">隐藏结果</button>
+            </div>
+            <div id="mlComparisonChart" style="height: 300px; display: none;">
+                <canvas id="comparisonChart"></canvas>
+            </div>
+            <div id="mlAnomaliesList" style="max-height: 400px; overflow-y: auto; margin-top: 15px;"></div>
+        </div>
+        
+        <table id="resultsTable">
+            <thead>
+                <tr>
+                    <th class="checkbox-col"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
+                    <th>IP 地址</th>
+                    <th>时间</th>
+                    <th>请求</th>
+                    <th>攻击类型</th>
+                    <th>风险等级</th>
+                    <th>置信度</th>
+                    <th>AI 结论</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="resultsList"></tbody>
+        </table>
+        
+        <div class="pagination" id="resultsPagination"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let currentPage = 1;
+    let totalPages = 1;
+    
+    // ========== 防止重复请求的优化 ==========
+    let isLoadingResults = false;  // 防止重复加载列表
+    let isLoadingDetail = false;    // 防止重复加载详情
+    let detailCache = new Map();   // 详情缓存
+    let searchDebounceTimer = null; // 搜索防抖定时器
+
+    // 加载分析结果
+    async function loadResults(page = 1) {
+        // 防止重复请求
+        if (isLoadingResults) {
+            console.log('⏳ 正在加载中，忽略重复请求');
+            return;
+        }
+        
+        currentPage = page;
+        const riskFilter = document.getElementById('riskFilter').value;
+        const attackFilter = document.getElementById('attackFilter').value;
+
+        try {
+            isLoadingResults = true;
+            
+            let url = `${API_BASE}/analysis/results?page=${page}&per_page=20`;
+            if (riskFilter) url += `&risk_level=${riskFilter}`;
+            if (attackFilter) url += `&attack_type=${attackFilter}`;
+
+            const response = await fetch(url);
+            const data = await response.json();
+
+            const tbody = document.getElementById('resultsList');
+            tbody.innerHTML = '';
+
+            data.results.forEach(result => {
+                const tr = document.createElement('tr');
+                const riskClass = result.risk_level === '高风险' ? 'risk-high' : 
+                                 result.risk_level === '中风险' ? 'risk-medium' : 'risk-low';
+                
+                // 获取 LLM 原始响应预览
+                let rawPreview = '';
+                if (result.llm_response_raw) {
+                    try {
+                        const parsed = JSON.parse(result.llm_response_raw);
+                        rawPreview = parsed.reason || parsed.conclusion || '已分析';
+                    } catch (e) {
+                        rawPreview = result.llm_response_raw.substring(0, 50) + '...';
+                    }
+                }
+                
+                tr.innerHTML = `
+                    <td><input type="checkbox" class="result-checkbox" value="${result.result_id}"></td>
+                    <td>${result.ip_address}</td>
+                    <td>${new Date(result.timestamp).toLocaleString()}</td>
+                    <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(result.request)}">${result.request}</td>
+                    <td>${result.attack_type || '未知'}</td>
+                    <td><span class="${riskClass}">${result.risk_level}</span></td>
+                    <td>${(result.confidence * 100).toFixed(1)}%</td>
+                    <td style="max-width: 150px; font-size: 12px; color: #666;" title="${escapeHtml(result.llm_response_raw || '')}">${rawPreview || '<span style="color:#999">暂无分析</span>'}</td>
+                    <td>
+                        <button class="btn btn-primary" onclick="viewDetail(${result.result_id})" style="padding: 5px 10px; font-size: 12px;">详情</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            totalPages = data.total_pages || 1;
+            renderPagination();
+        } catch (error) {
+            console.error('加载结果失败:', error);
+        } finally {
+            isLoadingResults = false;
+        }
+    }
+
+    // 渲染分页
+    function renderPagination() {
+        const pagination = document.getElementById('resultsPagination');
+        pagination.innerHTML = '';
+        
+        if (totalPages <= 1) return;
+        
+        for (let i = 1; i <= totalPages; i++) {
+            const btn = document.createElement('button');
+            btn.textContent = i;
+            btn.className = i === currentPage ? 'active' : '';
+            btn.onclick = () => loadResults(i);
+            pagination.appendChild(btn);
+        }
+    }
+
+    // 搜索结果（带防抖）
+    function searchResults() {
+        // 清除之前的定时器
+        if (searchDebounceTimer) {
+            clearTimeout(searchDebounceTimer);
+        }
+        
+        // 设置新的定时器，延迟300ms执行
+        searchDebounceTimer = setTimeout(() => {
+            const searchTerm = document.getElementById('searchBox').value.toLowerCase();
+            const rows = document.querySelectorAll('#resultsList tr');
+            
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(searchTerm) ? '' : 'none';
+            });
+        }, 300);
+    }
+
+    // 全选/取消全选
+    function toggleSelectAll() {
+        const selectAll = document.getElementById('selectAll').checked;
+        document.querySelectorAll('.result-checkbox').forEach(cb => {
+            cb.checked = selectAll;
+        });
+    }
+
+    // 查看详情（带缓存和防重复）
+    async function viewDetail(resultId) {
+        // 检查缓存
+        if (detailCache.has(resultId)) {
+            console.log(`📦 使用缓存数据: ${resultId}`);
+            displayDetailModal(detailCache.get(resultId));
+            return;
+        }
+        
+        // 防止重复请求
+        if (isLoadingDetail) {
+            console.log('⏳ 正在加载详情，忽略重复请求');
+            return;
+        }
+        
+        try {
+            isLoadingDetail = true;
+            const response = await fetch(`${API_BASE}/analysis/results/${resultId}`);
+            const data = await response.json();
+            
+            // 缓存数据
+            detailCache.set(resultId, data);
+            
+            // 限制缓存大小（最多缓存100条）
+            if (detailCache.size > 100) {
+                const firstKey = detailCache.keys().next().value;
+                detailCache.delete(firstKey);
+            }
+            
+            const riskLevel = data.risk_level === '高风险' ? '🔴 高风险' : 
+                             data.risk_level === '中风险' ? '🟡 中风险' : 
+                             data.risk_level === '低风险' ? '🟢 低风险' : '🟢 严重风险';
+            
+            let detailHtml = `
+                <div style="font-family: Arial, sans-serif; max-width: 700px;">
+                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px 10px 0 0;">
+                        <h2 style="margin: 0 0 10px 0;">🔍 日志分析详情</h2>
+                        <div style="font-size: 14px; opacity: 0.9;">分析时间: ${new Date(data.timestamp).toLocaleString()}</div>
+                    </div>
+                    
+                    <div style="padding: 20px; background: #fff; border: 1px solid #ddd; border-top: none;">
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <tr style="border-bottom: 1px solid #eee;">
+                                <td style="padding: 10px; font-weight: bold; width: 100px;">IP 地址</td>
+                                <td style="padding: 10px;">${data.ip_address}</td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid #eee;">
+                                <td style="padding: 10px; font-weight: bold;">请求</td>
+                                <td style="padding: 10px; font-family: monospace; word-break: break-all;">${data.request}</td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid #eee;">
+                                <td style="padding: 10px; font-weight: bold;">攻击类型</td>
+                                <td style="padding: 10px;">
+                                    <span style="display: inline-block; padding: 2px 8px; background: #e8f4ff; color: #1890ff; border-radius: 4px; font-size: 12px;">
+                                        ${data.attack_type || '未知'}
+                                    </span>
+                                </td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid #eee;">
+                                <td style="padding: 10px; font-weight: bold;">风险等级</td>
+                                <td style="padding: 10px;">${riskLevel}</td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid #eee;">
+                                <td style="padding: 10px; font-weight: bold;">置信度</td>
+                                <td style="padding: 10px;">
+                                    <div style="display: flex; align-items: center; gap: 10px;">
+                                        <div style="flex: 1; background: #f0f0f0; border-radius: 4px; height: 8px; max-width: 150px;">
+                                            <div style="background: ${data.confidence >= 0.8 ? '#52c41a' : data.confidence >= 0.5 ? '#faad14' : '#f5222d'}; height: 100%; border-radius: 4px; width: ${(data.confidence * 100)}%;"></div>
+                                        </div>
+                                        <span style="font-weight: bold;">${(data.confidence * 100).toFixed(1)}%</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        </table>
+                        
+                        ${data.llm_response_raw ? `
+                        <div style="background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 8px; margin-top: 20px; font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; line-height: 1.5; max-height: 400px; overflow-y: auto;">
+                            <div style="color: #569cd6; font-weight: bold; margin-bottom: 10px; font-size: 14px;">📄 LLM 原始响应 (JSON)</div>
+                            <pre style="margin: 0; white-space: pre-wrap; word-break: break-all;">${escapeHtml(data.llm_response_raw)}</pre>
+                        </div>
+                        ` : ''}
+                        
+                        ${data.prompt_template ? `
+                        <div style="margin-top: 15px; padding: 15px; background: #f5f5f5; border-radius: 8px; font-family: 'Consolas', 'Monaco', monospace; font-size: 12px; line-height: 1.5; max-height: 300px; overflow-y: auto;">
+                            <div style="font-weight: bold; margin-bottom: 8px; color: #666;">📋 <strong>提示词模板</strong></div>
+                            <pre style="margin: 0; white-space: pre-wrap; word-break: break-all; color: #555;">${escapeHtml(data.prompt_template)}</pre>
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('detailContent').innerHTML = detailHtml;
+            document.getElementById('detailModal').style.display = 'block';
+        } catch (error) {
+            console.error('加载详情失败:', error);
+            alert('加载详情失败，请重试');
+        } finally {
+            isLoadingDetail = false;
+        }
+    }
+    
+    // 显示详情弹窗（复用函数）
+    function displayDetailModal(data) {
+        const riskLevel = data.risk_level === '高风险' ? '🔴 高风险' : 
+                         data.risk_level === '中风险' ? '🟡 中风险' : 
+                         data.risk_level === '低风险' ? '🟢 低风险' : '🔴 严重风险';
+        
+        let detailHtml = `
+            <div style="font-family: Arial, sans-serif; max-width: 700px;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px 10px 0 0;">
+                    <h2 style="margin: 0 0 10px 0;">🔍 日志分析详情</h2>
+                    <div style="font-size: 14px; opacity: 0.9;">分析时间: ${new Date(data.timestamp).toLocaleString()}</div>
+                </div>
+                
+                <div style="padding: 20px; background: #fff; border: 1px solid #ddd; border-top: none;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tr style="border-bottom: 1px solid #eee;">
+                            <td style="padding: 10px; font-weight: bold; width: 100px;">IP 地址</td>
+                            <td style="padding: 10px;">${data.ip_address}</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #eee;">
+                            <td style="padding: 10px; font-weight: bold;">请求</td>
+                            <td style="padding: 10px; font-family: monospace; word-break: break-all;">${data.request}</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #eee;">
+                            <td style="padding: 10px; font-weight: bold;">攻击类型</td>
+                            <td style="padding: 10px;">
+                                <span style="display: inline-block; padding: 2px 8px; background: #e8f4ff; color: #1890ff; border-radius: 4px; font-size: 12px;">
+                                    ${data.attack_type || '未知'}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #eee;">
+                            <td style="padding: 10px; font-weight: bold;">风险等级</td>
+                            <td style="padding: 10px;">${riskLevel}</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #eee;">
+                            <td style="padding: 10px; font-weight: bold;">置信度</td>
+                            <td style="padding: 10px;">
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <div style="flex: 1; background: #f0f0f0; border-radius: 4px; height: 8px; max-width: 150px;">
+                                        <div style="background: ${data.confidence >= 0.8 ? '#52c41a' : data.confidence >= 0.5 ? '#faad14' : '#f5222d'}; height: 100%; border-radius: 4px; width: ${(data.confidence * 100)}%;"></div>
+                                    </div>
+                                    <span style="font-weight: bold;">${(data.confidence * 100).toFixed(1)}%</span>
+                                </div>
+                            </td>
+                        </tr>
+                    </table>
+                    
+                    ${(data.llm_conclusion || data.conclusion) ? `
+                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px; border-radius: 8px; margin-top: 20px; box-shadow: 0 2px 10px rgba(102, 126, 234, 0.3);">
+                        <div style="font-size: 12px; opacity: 0.9; margin-bottom: 8px;">💡 <strong>AI 分析结论</strong></div>
+                        <div style="font-size: 16px; font-weight: 500; line-height: 1.4;">${escapeHtml(data.llm_conclusion || data.conclusion)}</div>
+                    </div>
+                    ` : ''}
+                    
+                    ${(data.analysis_reason || data.reason) ? `
+                    <div style="margin-top: 15px; padding: 15px; background: #f5f5f5; border-radius: 8px;">
+                        <div style="font-weight: bold; margin-bottom: 8px; color: #666;">📋 <strong>详细分析</strong></div>
+                        <div style="color: #555; line-height: 1.6;">${escapeHtml(data.analysis_reason || data.reason)}</div>
+                    </div>
+                    ` : ''}
+                    
+                    ${data.suggestions && data.suggestions.length > 0 ? `
+                    <div style="margin-top: 15px; padding: 15px; background: #f6ffed; border: 1px solid #b7eb8f; border-radius: 8px;">
+                        <div style="font-weight: bold; margin-bottom: 10px; color: #52c41a;">🛡️ <strong>安全建议</strong></div>
+                        <ul style="margin: 0; padding-left: 20px; color: #555; line-height: 1.8;">
+                            ${data.suggestions.map(s => `<li style="margin-bottom: 5px;">${escapeHtml(s)}</li>`).join('')}
+                        </ul>
+                    </div>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+        
+        document.getElementById('detailContent').innerHTML = detailHtml;
+        document.getElementById('detailModal').style.display = 'block';
+    }
+
+    // 批量分析（防止重复提交）
+    let isBatchAnalyzing = false;
+    
+    async function showBatchAnalysisModal() {
+        if (isBatchAnalyzing) {
+            showMessage('批量分析正在进行中，请稍候...', 'warning');
+            return;
+        }
+        
+        const selected = Array.from(document.querySelectorAll('.result-checkbox:checked')).map(cb => cb.value);
+        if (selected.length === 0) {
+            showMessage('请先选择要分析的条目', 'warning');
+            return;
+        }
+
+        try {
+            isBatchAnalyzing = true;
+            showMessage(`开始批量分析 ${selected.length} 条记录...`, 'info');
+            
+            const response = await fetch(`${API_BASE}/analysis/batch`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ result_ids: selected })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                showMessage(`批量分析完成！分析 ${data.analyzed_count} 条记录`, 'success');
+                // 清除缓存，确保重新加载
+                detailCache.clear();
+                loadResults(currentPage);
+            } else {
+                showMessage('批量分析失败: ' + data.error, 'error');
+            }
+        } catch (error) {
+            console.error('批量分析失败:', error);
+            showMessage('批量分析失败', 'error');
+        } finally {
+            isBatchAnalyzing = false;
+        }
+    }
+
+    // ML 异常检测（防止重复请求）
+    let isMLDetecting = false;
+    
+    async function showMLDetectModal() {
+        if (isMLDetecting) {
+            showMessage('ML 检测正在进行中，请稍候...', 'warning');
+            return;
+        }
+        
+        try {
+            isMLDetecting = true;
+            showMessage('正在进行 ML 异常检测...', 'info');
+            const response = await fetch(`${API_BASE}/ml/detect`, {
+                method: 'POST'
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                document.getElementById('mlResultsSection').style.display = 'block';
+                document.getElementById('mlTotalEntries').textContent = data.total_entries;
+                document.getElementById('mlAnomalies').textContent = data.anomalies;
+                document.getElementById('mlAnomalyRate').textContent = (data.anomaly_rate * 100).toFixed(2) + '%';
+                
+                showMessage('ML 异常检测完成！', 'success');
+            } else {
+                showMessage('ML 检测失败: ' + data.error, 'error');
+            }
+        } catch (error) {
+            console.error('ML 检测失败:', error);
+            showMessage('ML 检测失败', 'error');
+        } finally {
+            isMLDetecting = false;
+        }
+    }
+
+    // 隐藏 ML 结果
+    function hideMLResults() {
+        document.getElementById('mlResultsSection').style.display = 'none';
+    }
+
+    // 页面加载时获取结果
+    document.addEventListener('DOMContentLoaded', function() {
+        loadResults(1);
+    });
+
+    // HTML转义函数
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+</script>
+{% endblock %}

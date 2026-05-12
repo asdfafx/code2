@@ -1,0 +1,1071 @@
+{% extends "base.html" %}
+
+{% block title %}日志分析 - 日志分析系统{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">🤖 智能日志安全分析</div>
+    <div class="card-body">
+        <!-- 统一上传与分析区域 -->
+        <div id="analysisSection" style="padding: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef;">
+            
+            <!-- 上传与模型配置 -->
+            <div style="margin-bottom: 20px;">
+                <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; align-items: center;">
+                    <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">📤 上传日志文件</button>
+                    <input type="file" id="fileInput" accept=".txt,.log" style="display: none;" onchange="uploadFile(this)">
+                    <button class="btn btn-primary" onclick="showPasteModal()" style="background: #11998e;">📋 粘贴日志</button>
+                    <span style="color: #666; font-size: 13px;">支持 .txt, .log 格式</span>
+                    <span id="currentFileDisplay" style="margin-left: 20px; padding: 5px 12px; background: #e3f2fd; border-radius: 5px; font-size: 13px; color: #1976d2;"></span>
+                </div>
+            </div>
+            
+            <!-- 模型与分析类型选择 -->
+            <div style="background: #fff; padding: 20px; border-radius: 8px; border: 1px solid #e0e0e0;">
+                <h4 style="margin-bottom: 15px; color: #333;">⚙️ 分析配置</h4>
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 15px;">
+                    <!-- 模型选择 -->
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-weight: 500;">AI 模型</label>
+                        <select id="modelType" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;" onchange="onModelTypeChange()">
+                            <option value="dashscope" selected>🟡 阿里云 Qwen (推荐)</option>
+                            <option value="deepseek">🔵 DeepSeek</option>
+                        </select>
+                    </div>
+                    
+                    <!-- 分析类型选择（提示词指定） -->
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-weight: 500;">🎯 分析任务</label>
+                        <select id="analysisType" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;" onchange="showPromptStructure()">
+<!--                            <option value="general">🔍 通用安全分析</option>-->
+                            <option value="auto" selected>无（按初筛自动，未命中通用）</option>
+                            <option value="sql_injection">💉 SQL 注入检测</option>
+                            <option value="xss">⚠️ XSS 攻击检测</option>
+                            <option value="directory_traversal">📁 目录遍历检测</option>
+                            <option value="stream">⚡ 流式规则分析</option>
+                            <option value="geo">🌍 地理分布分析</option>
+                            <option value="timeline">⏱️ 行为时间线分析</option>
+                        </select>
+                        <div id="promptStructureInfo" style="margin-top: 10px; padding: 12px; background: #f0f7ff; border-radius: 6px; font-size: 12px; line-height: 1.6;"></div>
+                    </div>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 15px;">
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-weight: 500;">API Key <span style="color: #dc3545;">(必填)</span></label>
+                        <input type="password" id="apiKey" placeholder="输入 API Key" style="width: 100%; padding: 10px; border: 2px solid #dc3545; border-radius: 5px;">
+                        <div style="margin-top: 8px; display: flex; gap: 10px; align-items: center;">
+                            <label style="font-size: 13px; color: #666; cursor: pointer;">
+                                <input type="checkbox" id="saveApiKey" checked onchange="toggleSaveApiKey()">
+                                💾 保存 API Key（本地存储）
+                            </label>
+                            <button onclick="clearSavedApiKey()" style="padding: 4px 10px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                                🗑️ 清除
+                            </button>
+                        </div>
+                        <div style="margin-top: 5px; font-size: 12px; color: #dc3545;">
+                            ⚠️ 必须提供 API Key，否则无法进行分析
+                        </div>
+                    </div>
+                    
+                    <!-- API Endpoint 已隐藏，使用默认值 -->
+                    <div style="display: none;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: 500;">API Endpoint <span style="color: #666;">(可选)</span></label>
+                        <input type="text" id="apiEndpoint" placeholder="留空使用默认值" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+                    </div>
+                </div>
+                
+                <!-- DeepSeek 思考模式 -->
+                <div id="thinkingConfig" style="display: none; margin-bottom: 15px; padding: 12px; background: #fff8e1; border-radius: 8px;">
+                    <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+                        <label style="display: flex; align-items: center; gap: 8px; font-weight: 500; cursor: pointer;">
+                            <input type="checkbox" id="thinkingEnabled" checked onchange="toggleThinkingConfig()">
+                            🧠 思考模式 (提升分析准确性)
+                        </label>
+                        <div id="reasoningEffortDiv" style="display: flex; align-items: center; gap: 8px;">
+                            <label style="font-weight: 500;">思考强度:</label>
+                            <select id="reasoningEffort" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 5px;">
+                                <option value="low">低</option>
+                                <option value="medium">中</option>
+                                <option value="high" selected>高</option>
+                                <option value="max">最强</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 分析参数配置 -->
+                <div id="advancedConfig" style="margin-bottom: 15px; padding: 12px; background: #f5f5f5; border-radius: 8px;">
+                    <div style="font-weight: 500; margin-bottom: 10px;">📊 分析参数</div>
+                    <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: center;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <label style="font-size: 13px;">最大分析条数:</label>
+                            <input type="number" id="maxLogs" value="50" min="1" max="200" style="width: 80px; padding: 6px; border: 1px solid #ddd; border-radius: 5px;">
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <label style="font-size: 13px;">风险阈值:</label>
+                            <input type="number" id="riskThreshold" value="40" min="0" max="100" style="width: 80px; padding: 6px; border: 1px solid #ddd; border-radius: 5px;">
+                        </div>
+                    </div>
+                </div>
+                
+                <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                    <button class="btn btn-primary btn-lg" onclick="runPreScreen()" style="padding: 12px 30px; font-size: 16px;">
+                        🔍 执行初筛
+                    </button>
+                    <button class="btn btn-success btn-lg" onclick="runAnalysis()" style="padding: 12px 30px; font-size: 16px;">
+                        🤖 用大模型分析
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 分析结果展示 -->
+        <div id="analysisResult" style="display: none; margin-top: 30px;">
+            <h3>📊 分析结果</h3>
+            <div id="resultContent"></div>
+        </div>
+    </div>
+</div>
+
+<!-- 全局加载动画（移到外层，确保始终可见） -->
+<div id="loadingOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 99999; justify-content: center; align-items: center; backdrop-filter: blur(5px);">
+    <div style="background: white; padding: 40px; border-radius: 15px; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,0.3); min-width: 300px;">
+        <div style="width: 60px; height: 60px; border: 5px solid #e0e0e0; border-top: 5px solid #667eea; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px;"></div>
+        <div id="loadingText" style="font-size: 18px; color: #333; font-weight: bold;">正在分析中...</div>
+        <div style="font-size: 14px; color: #666; margin-top: 10px;">请稍候，正在分析日志</div>
+    </div>
+</div>
+<style>
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>
+        
+        <!-- 粘贴日志弹窗 -->
+        <div id="pasteModal" class="modal">
+            <div class="modal-content" style="max-width: 700px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 style="margin: 0;">📋 粘贴访问日志</h2>
+                    <span class="close" onclick="closePasteModal()">&times;</span>
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: 500;">日志格式</label>
+                    <select id="pasteLogFormat" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+                        <option value="apache">Apache 通用日志格式</option>
+                        <option value="nginx">Nginx 访问日志格式</option>
+                    </select>
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: 500;">日志内容 <span style="color: #999; font-weight: 400;">(每行一条日志)</span></label>
+                    <textarea id="pasteLogText" placeholder="在此粘贴 Apache/Nginx 等格式的访问日志内容...&#10;示例：&#10;192.168.1.1 - - [10/Oct/2023:13:55:36 +0000] &quot;GET /index.html HTTP/1.1&quot; 200 2326&#10;192.168.1.2 - - [10/Oct/2023:13:55:37 +0000] &quot;POST /login HTTP/1.1&quot; 302 478" style="width: 100%; min-height: 250px; padding: 12px; border: 1px solid #ddd; border-radius: 5px; font-family: monospace; font-size: 13px; resize: vertical;"></textarea>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-success" onclick="submitPasteLog()" style="flex: 1;">📤 提交分析</button>
+                    <button class="btn" onclick="closePasteModal()" style="flex: 1; background: #666; color: white;">取消</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 导入记录表格 -->
+        <div style="margin-top: 40px; padding-top: 30px; border-top: 2px solid #e9ecef;">
+            <h3>📋 历史导入记录</h3>
+            <table style="width: 100%; margin-top: 15px; border-collapse: collapse;">
+                <thead>
+                    <tr style="background: #f8f9fa;">
+                        <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">选择</th>
+                        <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">文件名</th>
+                        <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">格式</th>
+                        <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">行数</th>
+                        <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">时间</th>
+                        <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">状态</th>
+                        <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="importList"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 确保 API_BASE 已定义（如果 base.html 中没有）
+    if (typeof API_BASE === 'undefined') {
+        const API_BASE = '/api';
+    }
+    
+    // 模型配置
+    const modelConfigs = {
+        deepseek: {
+            defaultEndpoint: 'https://api.deepseek.com/v1',
+            defaultModel: 'deepseek-chat'
+        },
+        dashscope: {
+            defaultEndpoint: 'https://dashscope.aliyuncs.com/api/v1',
+            defaultModel: 'qwen-plus'
+        }
+    };
+    
+    // 分析类型映射
+    const analysisTypeNames = {
+        'auto': '无（按初筛自动，未命中通用）',
+        'general': '通用安全分析',
+        'sql_injection': 'SQL注入检测',
+        'xss': 'XSS攻击检测',
+        'directory_traversal': '目录遍历检测',
+        'stream': '流式规则分析',
+        'geo': '地理分布分析',
+        'timeline': '行为时间线分析'
+    };
+
+    function formatTemplateName(templateKey) {
+        return analysisTypeNames[templateKey] || templateKey;
+    }
+
+    function inferTemplateFromKeyword(keyword) {
+        const value = String(keyword || '').toLowerCase();
+        const categoryMap = {
+            'sql注入': 'sql_injection',
+            'sql 注入': 'sql_injection',
+            'xss攻击': 'xss',
+            'xss': 'xss',
+            '目录遍历': 'directory_traversal',
+            '命令注入': 'general'
+        };
+        const sqlKeywords = ['select', 'union', 'drop', 'insert', 'update', 'delete', 'or 1=1', 'and 1=1', "' or '", '" or "', '--', ';', '/*', '*/', 'sleep(', 'waitfor', 'benchmark(', 'convert(', 'cast(', 'substring(', 'exec(', 'execute(', 'xp_', 'sp_'];
+        const xssKeywords = ['<script', '<\\/script>', 'javascript:', 'onerror=', 'onclick=', 'onload=', 'onmouseover=', 'eval(', 'alert(', 'prompt(', 'confirm(', 'document.cookie', 'document.write', '<img', '<iframe', '<svg', '<body', 'expression(', 'vbscript:'];
+        const traversalKeywords = ['../', '..\\', '%2e%2e', '%252e', '/etc/passwd', '/etc/shadow', 'c:\\windows', 'c:/windows', 'boot.ini', 'win.ini'];
+
+        if (categoryMap[value]) return categoryMap[value];
+        if (sqlKeywords.includes(value)) return 'sql_injection';
+        if (xssKeywords.includes(value)) return 'xss';
+        if (traversalKeywords.includes(value)) return 'directory_traversal';
+        return 'general';
+    }
+
+    function selectPromptTemplateForKeyword(keyword) {
+        const templateKey = inferTemplateFromKeyword(keyword);
+        const analysisTypeEl = document.getElementById('analysisType');
+        if (analysisTypeEl) {
+            analysisTypeEl.value = templateKey;
+            showPromptStructure();
+            showMessage(`已根据命中词「${keyword}」选择提示词模板：${formatTemplateName(templateKey)}`, 'success');
+        }
+    }
+
+    function encodeKeywordForOnclick(keyword) {
+        return encodeURIComponent(String(keyword || ''));
+    }
+    
+    // 分析类型结构详情（角色设定 + 任务描述 + 日志信息 + 输出格式）
+    const promptStructures = {
+        'auto': {
+            role: '不指定固定提示词模板',
+            task: '按每条日志的初筛命中类别自动选择对应提示词模板；没有命中的日志使用通用安全分析',
+            input: '初筛命中词、风险评分、原始日志',
+            output: '所有日志都会进入大模型分析，未命中项走通用模板'
+        },
+        'general': {
+            role: '你是一位资深网络安全分析师，擅长识别Web应用中的各类安全威胁',
+            task: '对每条HTTP日志进行全面安全分析，判断是否为攻击行为',
+            input: 'IP地址、请求方法、URL、参数、状态码、User-Agent、原始日志、风险关键词',
+            output: '攻击类型、风险等级（low/medium/high/critical）、分析结论、置信度'
+        },
+        'sql_injection': {
+            role: '你是一位数据库安全专家，精通SQL注入攻击原理和防御技术',
+            task: '深度检测日志中的SQL注入特征，包括联合查询、布尔盲注、时间盲注、堆叠注入等',
+            input: 'SQL注入关键词、请求参数、URL、状态码、数据库错误信息、原始日志',
+            output: '攻击类型、注入手法、风险等级、Payload分析、利用建议'
+        },
+        'xss': {
+            role: '你是一位Web安全研究员，专攻跨站脚本攻击（XSS）及其变种',
+            task: '识别反射型、存储型、DOM型XSS攻击，检测各类绕过技术',
+            input: 'XSS关键词、HTML标签、JavaScript事件、编码特征、Referer、User-Agent',
+            output: '攻击类型（反射/存储/DOM）、XSS变种、风险等级、Payload解析'
+        },
+        'directory_traversal': {
+            role: '你是一位系统安全审计员，熟悉路径穿越和敏感文件访问攻击',
+            task: '检测目录遍历、路径穿越、敏感文件读取等攻击尝试',
+            input: 'URL路径、文件参数、穿越序列（../）、敏感路径、系统文件访问',
+            output: '攻击类型、目标路径、穿越层级、风险等级、影响评估'
+        },
+        'stream': {
+            role: '你是一位实时安全监控专家，具备流式日志分析和异常检测能力',
+            task: '基于规则和模式识别，对连续日志流进行实时威胁检测',
+            input: '实时日志流、规则模式库、IP频率、请求特征、时序关系',
+            output: '攻击模式匹配、异常行为标记、风险评分、关联分析'
+        },
+        'geo': {
+            role: '你是一位网络安全情报分析师，擅长地理IP威胁情报分析',
+            task: '基于IP地址地理位置，分析攻击来源分布和地域特征',
+            input: 'IP地址、地理位置（国家/城市）、ISP、攻击类型、请求时间',
+            output: '攻击趋势、威胁情报关联'
+        },
+        'timeline': {
+            role: '你是一位攻击行为分析专家，精通攻击链和时间序列分析',
+            task: '重构攻击者的完整攻击过程，识别攻击阶段和意图',
+            input: '日志时间戳、攻击序列、IP行为模式、请求频率、攻击类型演变',
+            output: '攻击时间线、攻击阶段划分、攻击者画像、威胁评估'
+        }
+    };
+    
+    // 显示提示词结构信息
+    function showPromptStructure() {
+        // 清空之前的分析结果
+        const resultDiv = document.getElementById('analysisResult');
+        const contentDiv = document.getElementById('resultContent');
+        if (resultDiv) resultDiv.style.display = 'none';
+        if (contentDiv) contentDiv.innerHTML = '';
+        
+        const type = document.getElementById('analysisType').value;
+        const info = promptStructures[type];
+        const infoDiv = document.getElementById('promptStructureInfo');
+        
+        if (info && infoDiv) {
+            infoDiv.innerHTML = `
+                <div style="margin-bottom: 8px; font-weight: 600; color: #1976d2;">📋 Prompt 结构分解</div>
+                <div style="margin-bottom: 5px;"><span style="color: #e91e63;">🎭 角色:</span> ${info.role}</div>
+                <div style="margin-bottom: 5px;"><span style="color: #4caf50;">📌 任务:</span> ${info.task}</div>
+                <div style="margin-bottom: 5px;"><span style="color: #ff9800;">📥 输入:</span> ${info.input}</div>
+                <div><span style="color: #9c27b0;">📤 输出:</span> ${info.output}</div>
+            `;
+        }
+    }
+    
+    let currentImportId = null;
+    
+    // 上传文件
+    async function uploadFile(input) {
+        const file = input.files[0];
+        if (!file) return;
+        
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        try {
+            showLoading('正在上传文件...');
+            const response = await fetch(`${API_BASE}/logs/upload`, {
+                method: 'POST',
+                credentials: 'include',
+                body: formData
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                hideLoading();
+                showMessage('文件上传成功！', 'success');
+                currentImportId = data.import.import_id;
+                document.getElementById('currentFileDisplay').textContent = `📄 ${file.name}`;
+                loadImportList();
+            } else {
+                hideLoading();
+                showMessage('上传失败: ' + data.error, 'error');
+            }
+        } catch (error) {
+            hideLoading();
+            console.error('上传失败:', error);
+            showMessage('上传失败', 'error');
+        }
+        input.value = '';
+    }
+
+    // 显示粘贴日志弹窗
+    function showPasteModal() {
+        document.getElementById('pasteModal').style.display = 'block';
+    }
+
+    // 关闭粘贴日志弹窗
+    function closePasteModal() {
+        document.getElementById('pasteModal').style.display = 'none';
+        document.getElementById('pasteLogText').value = '';
+    }
+
+    // 提交粘贴的日志
+    async function submitPasteLog() {
+        const text = document.getElementById('pasteLogText').value.trim();
+        if (!text) {
+            showMessage('请输入日志内容', 'warning');
+            return;
+        }
+
+        const logFormat = document.getElementById('pasteLogFormat').value;
+
+        try {
+            showLoading('正在处理粘贴的日志...');
+            const response = await fetch(`${API_BASE}/logs/paste`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text, format: logFormat })
+            });
+
+            const data = await response.json();
+            hideLoading();
+
+            if (data.success) {
+                showMessage(`导入成功，解析了 ${data.parsed_count} 条日志`, 'success');
+                currentImportId = data.import.import_id;
+                document.getElementById('currentFileDisplay').textContent = '📋 粘贴的日志';
+                closePasteModal();
+                loadImportList();
+            } else {
+                showMessage('导入失败: ' + (data.error || '未知错误'), 'error');
+            }
+        } catch (error) {
+            hideLoading();
+            console.error('粘贴日志失败:', error);
+            showMessage('导入失败: ' + error.message, 'error');
+        }
+    }
+
+    // 加载导入列表
+    async function loadImportList() {
+        try {
+            const response = await fetch(`${API_BASE}/logs/list`, {
+                credentials: 'include'
+            });
+            const data = await response.json();
+            
+            const tbody = document.getElementById('importList');
+            tbody.innerHTML = '';
+            
+            if (!data.imports || data.imports.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #666; padding: 20px;">暂无导入记录</td></tr>';
+                return;
+            }
+            
+            data.imports.forEach(imp => {
+                const tr = document.createElement('tr');
+                const isSelected = currentImportId === imp.import_id;
+                tr.innerHTML = `
+                    <td style="padding: 10px; border: 1px solid #ddd;">
+                        <input type="radio" name="importSelect" value="${imp.import_id}" 
+                            ${isSelected ? 'checked' : ''} 
+                            onchange="selectImport(${imp.import_id}, '${imp.filename}')">
+                    </td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">${imp.filename || '粘贴文本'}</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">${imp.log_format || '未知'}</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">${imp.total_lines || 0}</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">${new Date(imp.import_time).toLocaleString()}</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;"><span class="badge">${imp.status}</span></td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">
+                        <button class="btn btn-danger" onclick="deleteImport(${imp.import_id}, '${imp.filename}')" style="padding: 5px 10px; font-size: 12px;">删除</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+                
+                if (!currentImportId) {
+                    currentImportId = imp.import_id;
+                    document.getElementById('currentFileDisplay').textContent = `📄 ${imp.filename || '粘贴文本'}`;
+                    tr.querySelector('input').checked = true;
+                }
+            });
+        } catch (error) {
+            console.error('加载导入列表失败:', error);
+        }
+    }
+    
+    // 选择导入记录
+    function selectImport(importId, filename) {
+        currentImportId = importId;
+        document.getElementById('currentFileDisplay').textContent = `📄 ${filename || '粘贴文本'}`;
+    }
+
+    // 删除导入记录
+    async function deleteImport(importId, filename) {
+        if (!confirm(`确定要删除 "${filename || '粘贴文本'}" 及其所有分析结果吗？此操作不可撤销。`)) return;
+
+        try {
+            const response = await fetch(`${API_BASE}/logs/${importId}`, {
+                method: 'DELETE',
+                credentials: 'include'
+            });
+            const data = await response.json();
+
+            if (data.message) {
+                showMessage(data.message, 'success');
+                if (currentImportId === importId) {
+                    currentImportId = null;
+                    document.getElementById('currentFileDisplay').textContent = '📄 请选择一个导入记录';
+                }
+                loadImportList();
+            } else {
+                showMessage('删除失败: ' + (data.error || '未知错误'), 'error');
+            }
+        } catch (error) {
+            console.error('删除导入记录失败:', error);
+            showMessage('删除失败: ' + error.message, 'error');
+        }
+    }
+    
+    // 模型类型变更
+    function onModelTypeChange() {
+        const modelType = document.getElementById('modelType').value;
+        const thinkingConfig = document.getElementById('thinkingConfig');
+        
+        // 只有 DeepSeek 支持思考模式
+        if (modelType === 'deepseek') {
+            thinkingConfig.style.display = 'block';
+        } else {
+            thinkingConfig.style.display = 'none';
+        }
+        
+        // 更新 Endpoint 提示
+        const endpoint = modelConfigs[modelType].defaultEndpoint;
+        document.getElementById('apiEndpoint').placeholder = `留空使用默认值: ${endpoint}`;
+    }
+    
+    // 切换思考模式
+    function toggleThinkingConfig() {
+        const enabled = document.getElementById('thinkingEnabled').checked;
+        document.getElementById('reasoningEffortDiv').style.opacity = enabled ? 1 : 0.5;
+        document.getElementById('reasoningEffort').disabled = !enabled;
+    }
+    
+    // 显示/隐藏加载动画
+    function showLoading(message) {
+        console.log('[showLoading] 函数被调用, message:', message);
+        const overlay = document.getElementById('loadingOverlay');
+        const text = document.getElementById('loadingText');
+        if (text) text.textContent = message || '正在分析中...';
+        if (overlay) {
+            // 强制设置为 flex 布局
+            overlay.style.display = 'flex';
+            overlay.style.justifyContent = 'center';
+            overlay.style.alignItems = 'center';
+            // 确保 z-index 最高
+            overlay.style.zIndex = '99999';
+            console.log('[showLoading] loadingOverlay 已显示, display:', overlay.style.display);
+            console.log('[showLoading] overlay 元素:', overlay);
+        } else {
+            console.error('[showLoading] loadingOverlay 元素不存在');
+        }
+    }
+    
+    function hideLoading() {
+        const overlay = document.getElementById('loadingOverlay');
+        if (overlay) overlay.style.display = 'none';
+    }
+    
+    function getSelectedImportId() {
+        const importSelect = document.querySelector('input[name="importSelect"]:checked');
+        return importSelect ? importSelect.value : null;
+    }
+
+    // 执行规则初筛
+    async function runPreScreen() {
+        const currentImportIdInput = getSelectedImportId();
+        if (!currentImportIdInput) {
+            showMessage('请先上传日志文件或选择导入记录', 'warning');
+            return;
+        }
+
+        try {
+            showLoading('正在执行规则初筛...');
+            const response = await fetch(`${API_BASE}/logs/pre-screen`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ import_id: currentImportIdInput })
+            });
+            const data = await response.json();
+            hideLoading();
+
+            if (data.success) {
+                displayPreScreenResult(data);
+                showMessage('初筛完成！', 'success');
+            } else {
+                showMessage('初筛失败: ' + (data.error || '未知错误'), 'error');
+            }
+        } catch (error) {
+            hideLoading();
+            console.error('初筛失败:', error);
+            showMessage('初筛失败: ' + error.message, 'error');
+        }
+    }
+
+    function displayPreScreenResult(data) {
+        const resultDiv = document.getElementById('analysisResult');
+        const contentDiv = document.getElementById('resultContent');
+        if (!resultDiv || !contentDiv) return;
+
+        resultDiv.style.display = 'block';
+        resultDiv.scrollIntoView({ behavior: 'smooth' });
+
+        const pss = data.pre_screen_stats || {};
+        const topKeywords = Object.entries(pss.top_keywords || {});
+        const attackTypes = Object.entries(pss.attack_types || {});
+        const suspiciousEntries = data.suspicious_entries || [];
+        const primaryKeyword = topKeywords.length > 0 ? topKeywords[0][0] : '未命中';
+        const primaryKeywordHtml = primaryKeyword === '未命中'
+            ? '<span style="color: #999;">未命中</span>'
+            : `<button type="button" onclick="selectPromptTemplateForKeyword(decodeURIComponent('${encodeKeywordForOnclick(primaryKeyword)}'))" style="margin-left: 6px; padding: 3px 10px; background: #f0e6ff; border: 1px solid #d8c5ff; border-radius: 10px; font-size: 12px; cursor: pointer;">${escapeHtml(primaryKeyword)}</button>`;
+
+        let html = `
+            <div style="padding: 20px; background: #fff; border-radius: 8px; border: 1px solid #ddd;">
+                <div style="margin-bottom: 15px;">
+                    <strong>分析类型:</strong> 得出命中词：${primaryKeywordHtml}
+                    <span style="float: right; color: #999; font-size: 12px;">${new Date().toLocaleString()}</span>
+                </div>
+                <div style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 120px; padding: 15px; background: #e3f2fd; border-radius: 8px; text-align: center;">
+                        <div style="font-size: 28px; font-weight: bold; color: #1976d2;">${data.total_logs || 0}</div>
+                        <div style="color: #666; font-size: 13px;">扫描日志</div>
+                    </div>
+                    <div style="flex: 1; min-width: 120px; padding: 15px; background: #ffebee; border-radius: 8px; text-align: center;">
+                        <div style="font-size: 28px; font-weight: bold; color: #c62828;">${data.suspicious_count || 0}</div>
+                        <div style="color: #666; font-size: 13px;">初筛命中</div>
+                    </div>
+                    <div style="flex: 1; min-width: 120px; padding: 15px; background: #e8f5e9; border-radius: 8px; text-align: center;">
+                        <div style="font-size: 28px; font-weight: bold; color: #388e3c;">${data.safe_count || 0}</div>
+                        <div style="color: #666; font-size: 13px;">未命中</div>
+                    </div>
+                </div>
+        `;
+
+        if (topKeywords.length > 0) {
+            html += '<div style="margin-bottom: 15px;"><strong>初筛命中:</strong><div style="margin-top: 8px;">';
+            html += topKeywords.map(([kw, count]) =>
+                `<button type="button" onclick="selectPromptTemplateForKeyword(decodeURIComponent('${encodeKeywordForOnclick(kw)}'))" style="display: inline-block; margin: 2px 4px; padding: 3px 9px; background: #f0e6ff; border: 1px solid #d8c5ff; border-radius: 10px; font-size: 12px; cursor: pointer;">${escapeHtml(kw)} <strong>×${count}</strong></button>`
+            ).join('');
+            html += '</div></div>';
+        }
+
+        if (attackTypes.length > 0) {
+            html += '<div style="margin-bottom: 15px;"><strong>初筛攻击类型:</strong><div style="margin-top: 8px;">';
+            html += attackTypes.map(([type, count]) =>
+                `<span style="display: inline-block; margin: 2px 4px; padding: 4px 10px; background: #fff3e0; border-radius: 10px; font-size: 12px;">${escapeHtml(type)} <strong>×${count}</strong></span>`
+            ).join('');
+            html += '</div></div>';
+        }
+
+        if (suspiciousEntries.length > 0) {
+            html += '<h4 style="margin-bottom: 10px;">初筛命中详情（前 100 条）</h4><div style="max-height: 420px; overflow-y: auto;">';
+            suspiciousEntries.forEach((item, index) => {
+                const entry = item.entry || {};
+                const analysis = item.analysis || {};
+                html += `
+                    <div style="padding: 12px; margin-bottom: 10px; background: #fafafa; border-left: 4px solid #667eea; border-radius: 3px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                            <strong>${index + 1}. ${escapeHtml(entry.ip_address || '未知IP')}</strong>
+                            <span style="padding: 3px 10px; background: #667eea; color: white; border-radius: 3px; font-size: 12px;">评分 ${analysis.risk_score || 0}</span>
+                        </div>
+                        <div style="font-family: monospace; font-size: 12px; color: #666; word-break: break-all;">${escapeHtml((entry.method || '') + ' ' + (entry.url || ''))}</div>
+                        <div style="margin-top: 8px; font-size: 12px; color: #666;">初筛命中: ${(analysis.matched_keywords || []).map(kw => `<button type="button" onclick="selectPromptTemplateForKeyword(decodeURIComponent('${encodeKeywordForOnclick(kw)}'))" style="background: #f0e6ff; border: 1px solid #d8c5ff; padding: 1px 5px; border-radius: 3px; cursor: pointer;">${escapeHtml(kw)}</button>`).join(' ')}</div>
+                        ${(analysis.template_labels || []).length ? `<div style="margin-top: 6px; font-size: 12px; color: #888;">建议模板: ${(analysis.template_labels || []).map(label => `<code style="background: #f5f5f5; padding: 1px 5px; border-radius: 3px;">${escapeHtml(label)}</code>`).join(' ')}</div>` : ''}
+                    </div>
+                `;
+            });
+            html += '</div>';
+        }
+
+        html += '</div>';
+        contentDiv.innerHTML = html;
+    }
+
+    // 执行大模型分析
+    async function runAnalysis() {
+        console.log('[DEBUG] runAnalysis 开始执行');
+        
+        // 获取 DOM 元素
+        const currentImportIdInput = getSelectedImportId();
+        const modelTypeEl = document.getElementById('modelType');
+        const analysisTypeEl = document.getElementById('analysisType');
+        const apiKeyEl = document.getElementById('apiKey');
+        const apiEndpointEl = document.getElementById('apiEndpoint');
+        const thinkingEnabledEl = document.getElementById('thinkingEnabled');
+        const reasoningEffortEl = document.getElementById('reasoningEffort');
+        const maxLogsEl = document.getElementById('maxLogs');
+        
+        // 检查日志文件选择
+        if (!currentImportIdInput) {
+            console.log('[DEBUG] currentImportIdInput is null');
+            showMessage('请先上传日志文件或选择导入记录', 'warning');
+            return;
+        }
+        
+        const modelType = modelTypeEl ? modelTypeEl.value : 'dashscope';
+        const analysisType = analysisTypeEl ? analysisTypeEl.value : 'general';
+        const apiKey = apiKeyEl ? apiKeyEl.value.trim() : '';
+        const apiEndpoint = apiEndpointEl ? (apiEndpointEl.value.trim() || modelConfigs[modelType].defaultEndpoint) : modelConfigs[modelType].defaultEndpoint;
+        const modelName = modelConfigs[modelType].defaultModel;
+        const thinkingEnabled = modelType === 'deepseek' && thinkingEnabledEl ? thinkingEnabledEl.checked : false;
+        const reasoningEffort = reasoningEffortEl ? reasoningEffortEl.value : 'high';
+        const maxLogs = maxLogsEl ? (parseInt(maxLogsEl.value) || 50) : 50;
+        
+        console.log('[DEBUG] 选择的配置:', {
+            currentImportId: currentImportIdInput,
+            modelType,
+            analysisType,
+            apiEndpoint,
+            modelName,
+            thinkingEnabled,
+            reasoningEffort,
+            maxLogs
+        });
+        
+        // 保存 API Key 到本地存储（如果用户勾选）
+        const saveCheckbox = document.getElementById('saveApiKey');
+        if (apiKey && saveCheckbox && saveCheckbox.checked) {
+            localStorage.setItem('llm_api_key', apiKey);
+            console.log('[API Key] 💾 已保存到本地存储');
+        } else if (!saveCheckbox || !saveCheckbox.checked) {
+            localStorage.removeItem('llm_api_key');
+            console.log('[API Key] 🗑️ 未保存 API Key');
+        }
+        
+        if (!apiKey) {
+            showMessage('请输入 API Key', 'warning');
+            return;
+        }
+        
+        const analysisName = analysisTypeNames[analysisType] || analysisType;
+        
+        try {
+            console.log('[runAnalysis] 准备显示加载动画');
+            // 显示加载动画
+            showLoading(`正在执行 ${analysisName}...`);
+            console.log('[runAnalysis] 加载动画已调用');
+            
+            // 构建请求体
+            const requestBody = {
+                import_id: currentImportIdInput,
+                model_type: modelType,
+                api_key: apiKey,
+                api_endpoint: apiEndpoint,
+                model_name: modelName,
+                analysis_type: analysisType,
+                thinking_enabled: thinkingEnabled,
+                reasoning_effort: reasoningEffort,
+                max_logs: maxLogs
+            };
+            
+            console.log('[前端] 发送请求到:', `${API_BASE}/logs/llm-analyze`);
+            console.log('[前端] 请求体:', JSON.stringify(requestBody, null, 2));
+            console.log('[前端] analysisType 确认:', analysisType, '=', analysisTypeNames[analysisType]);
+            
+            const response = await fetch(`${API_BASE}/logs/llm-analyze`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify(requestBody)
+            });
+            
+            console.log('[前端] 响应状态:', response.status);
+            
+            const data = await response.json();
+            
+            console.log('[前端] 收到响应:', data);
+            
+            // 隐藏加载动画
+            hideLoading();
+            
+            if (data.success || data.total_logs !== undefined) {
+                displayResult(data, analysisType, modelType);
+            } else {
+                showMessage('分析失败: ' + (data.error || '未知错误'), 'error');
+            }
+        } catch (error) {
+            // 确保隐藏加载动画
+            hideLoading();
+            console.error('分析失败:', error);
+            showMessage('分析失败: ' + error.message, 'error');
+        }
+    }
+    
+    // 显示结果
+    function displayResult(data, analysisType, modelType) {
+        console.log('[displayResult] 函数被调用');
+        console.log('[displayResult] analysisType:', analysisType, 'modelType:', modelType);
+        console.log('[displayResult] 完整数据:', JSON.stringify(data, null, 2));
+        
+        const resultDiv = document.getElementById('analysisResult');
+        const contentDiv = document.getElementById('resultContent');
+        
+        if (!resultDiv || !contentDiv) {
+            console.error('[displayResult] 结果容器元素不存在');
+            return;
+        }
+        
+        // 强制刷新显示
+        resultDiv.style.display = 'none';
+        contentDiv.innerHTML = '';
+        
+        resultDiv.style.display = 'block';
+        resultDiv.scrollIntoView({ behavior: 'smooth' });
+        
+        const analysisName = analysisTypeNames[analysisType] || analysisType;
+        
+        // 思考模式提示
+        let thinkingInfo = '';
+        if (data.thinking_mode && data.thinking_mode.enabled) {
+            const effortLabels = {'low': '低', 'medium': '中', 'high': '高', 'max': '最强'};
+            thinkingInfo = `<div style="padding: 10px; background: #fff8e1; border-radius: 5px; margin-bottom: 15px; font-size: 13px;">
+                🧠 思考模式: 已启用 | 强度: ${effortLabels[data.thinking_mode.effort] || '高'}
+            </div>`;
+        }
+        
+        let html = `
+            <div style="padding: 20px; background: #fff; border-radius: 8px; border: 1px solid #ddd;">
+                <div style="margin-bottom: 15px;">
+                    <strong>分析类型:</strong> 按初筛结果自动分流 | 
+                    <strong>兜底模板:</strong> ${analysisName} | 
+                    <strong>模型:</strong> ${modelType === 'dashscope' ? '阿里云 Qwen' : 'DeepSeek'}
+                    <span id="analysisTimestamp" style="float: right; color: #999; font-size: 12px;">${new Date().toLocaleString()}</span>
+                </div>
+                ${thinkingInfo}
+                
+                <div style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 120px; padding: 15px; background: #e3f2fd; border-radius: 8px; text-align: center;">
+                        <div style="font-size: 28px; font-weight: bold; color: #1976d2;">${data.total_logs || 0}</div>
+                        <div style="color: #666; font-size: 13px;">总日志数</div>
+                    </div>
+                    <div style="flex: 1; min-width: 120px; padding: 15px; background: #ffebee; border-radius: 8px; text-align: center;">
+                        <div style="font-size: 28px; font-weight: bold; color: #c62828;">${data.suspicious_count || 0}</div>
+                        <div style="color: #666; font-size: 13px;">可疑日志</div>
+                    </div>
+                    <div style="flex: 1; min-width: 120px; padding: 15px; background: #e8f5e9; border-radius: 8px; text-align: center;">
+                        <div style="font-size: 28px; font-weight: bold; color: #388e3c;">${data.safe_count || 0}</div>
+                        <div style="color: #666; font-size: 13px;">安全日志</div>
+                    </div>
+                </div>
+        `;
+
+        // 初筛概况
+        if (data.pre_screen_stats) {
+            const pss = data.pre_screen_stats;
+            html += '<div style="margin-bottom: 20px; padding: 15px; background: #f5f0ff; border-radius: 8px; border-left: 4px solid #667eea;">';
+            html += '<strong style="color: #667eea;">🔍 规则初筛概况</strong>';
+            html += `<div style="margin-top: 10px; display: flex; gap: 15px; flex-wrap: wrap;">`;
+            html += `<span style="padding: 5px 12px; background: #fff; border-radius: 5px; font-size: 13px;">📊 扫描: <strong>${pss.total_scanned || 0}</strong> 条</span>`;
+            html += `<span style="padding: 5px 12px; background: #fff; border-radius: 5px; font-size: 13px;">🚩 命中: <strong>${pss.flagged || 0}</strong> 条</span>`;
+            html += `</div>`;
+
+            // 关键词 Top 匹配
+            const topKw = pss.top_keywords || {};
+            const kwEntries = Object.entries(topKw);
+            if (kwEntries.length > 0) {
+                html += '<div style="margin-top: 10px;"><span style="font-size: 12px; color: #666;">初筛命中:</span> ';
+                html += kwEntries.map(([kw, count]) =>
+                    `<button type="button" onclick="selectPromptTemplateForKeyword(decodeURIComponent('${encodeKeywordForOnclick(kw)}'))" style="display: inline-block; margin: 2px 4px; padding: 2px 8px; background: #e8e0f0; border: 1px solid #d8c5ff; border-radius: 10px; font-size: 11px; cursor: pointer;">${escapeHtml(kw)} <strong>×${count}</strong></button>`
+                ).join('');
+                html += '</div>';
+            }
+
+            // 攻击类型初筛
+            const atTypes = pss.attack_types || {};
+            const atEntries = Object.entries(atTypes);
+            if (atEntries.length > 0) {
+                html += '<div style="margin-top: 8px;"><span style="font-size: 12px; color: #666;">初筛攻击类型:</span> ';
+                html += atEntries.map(([t, c]) =>
+                    `<span style="display: inline-block; margin: 2px 4px; padding: 3px 10px; background: #fff3e0; border-radius: 10px; font-size: 11px;">${t} <strong>×${c}</strong></span>`
+                ).join('');
+                html += '</div>';
+            }
+            html += '</div>';
+        }
+
+        // 判断是否为真正威胁的函数
+        function isRealThreat(log) {
+            const conclusion = (log.conclusion || '').toLowerCase();
+            return !(conclusion.includes('未检测') || conclusion.includes('正常') || 
+                    conclusion.includes('安全') || conclusion.includes('无') ||
+                    conclusion.includes('不存在') || conclusion.includes('无效'));
+        }
+        
+        // 初始化统计变量
+        const riskStats = { critical: 0, high: 0, medium: 0, low: 0 };
+        const attackTypeStats = {};
+        const attackTypeIcon = {
+            'SQL注入': '💉', 'XSS': '⚠️', 'XSS攻击': '⚠️',
+            '目录遍历': '📁', '无攻击': '✅', '正常访问': '✅',
+            '分析异常': '❓', '正常': '✅', '通用威胁': '🎯'
+        };
+        const attackTypeMapping = {
+            'sql_injection': ['SQL注入', 'SQL注入攻击'],
+            'xss': ['XSS', 'XSS攻击'],
+            'directory_traversal': ['目录遍历'],
+            'general': ['通用威胁']
+        };
+        
+        // 处理日志数据
+        let realThreats = [];
+        let safeLogs = [];
+        
+        if (data.suspicious_logs && data.suspicious_logs.length > 0) {
+            realThreats = data.suspicious_logs.filter(log => isRealThreat(log));
+            safeLogs = data.suspicious_logs.filter(log => !isRealThreat(log));
+            
+            // 统计真正的威胁
+            realThreats.forEach(log => {
+                // 统计风险等级
+                const level = log.risk_level || 'low';
+                if (riskStats[level] !== undefined) {
+                    riskStats[level]++;
+                }
+                // 统计攻击类型
+                let attackType = log.attack_type || '未知攻击';
+                const mappedTypes = attackTypeMapping[analysisType] || [];
+                if (mappedTypes.some(t => attackType.includes(t.replace('攻击', '')))) {
+                    attackType = mappedTypes[0];
+                }
+                attackTypeStats[attackType] = (attackTypeStats[attackType] || 0) + 1;
+            });
+        }
+        
+        // 显示风险分布
+        const riskTotal = riskStats.critical + riskStats.high + riskStats.medium + riskStats.low;
+        if (riskTotal > 0) {
+            html += '<div style="margin-bottom: 20px;"><strong>风险分布:</strong><div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">';
+            if (riskStats.critical) html += `<span style="padding: 8px 15px; background: #d32f2f; color: white; border-radius: 5px;">🔴 严重: ${riskStats.critical}</span>`;
+            if (riskStats.high) html += `<span style="padding: 8px 15px; background: #f57c00; color: white; border-radius: 5px;">🟠 高危: ${riskStats.high}</span>`;
+            if (riskStats.medium) html += `<span style="padding: 8px 15px; background: #fbc02d; color: #333; border-radius: 5px;">🟡 中危: ${riskStats.medium}</span>`;
+            if (riskStats.low) html += `<span style="padding: 8px 15px; background: #4caf50; color: white; border-radius: 5px;">🟢 低危: ${riskStats.low}</span>`;
+            html += '</div></div>';
+        }
+        
+        // 显示攻击类型分布
+        const attackTypes = Object.keys(attackTypeStats);
+        if (attackTypes.length > 0) {
+            html += `<h4 style="margin-bottom: 10px;">🔍 攻击类型分布 (${analysisName})</h4>`;
+            html += '<div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">';
+            attackTypes.forEach(type => {
+                const icon = attackTypeIcon[type] || '🎯';
+                html += `<span style="padding: 8px 15px; background: #f5f5f5; border-radius: 5px; border: 1px solid #ddd;">
+                    ${icon} ${type}: ${attackTypeStats[type]}
+                </span>`;
+            });
+            html += '</div>';
+        }
+        
+        // 显示真正的威胁详情
+        if (realThreats.length > 0) {
+            const analysisTypeLabel = {
+                'general': '⚠️ 安全威胁详情',
+                'sql_injection': '💉 SQL注入攻击详情',
+                'xss': '⚠️ XSS攻击详情',
+                'directory_traversal': '📁 目录遍历攻击详情',
+                'stream': '⚡ 异常行为详情',
+                'geo': '🌍 地理威胁详情',
+                'timeline': '⏱️ 攻击时序详情'
+            };
+            
+            html += `<h4 style="margin-bottom: 10px;">${analysisTypeLabel[analysisType] || '⚠️ 威胁详情'} (前 ${Math.min(realThreats.length, 20)} 条)</h4>`;
+            html += '<div style="max-height: 500px; overflow-y: auto;">';
+            
+            realThreats.slice(0, 20).forEach((log, index) => {
+                const riskColor = {'critical': '#d32f2f', 'high': '#f57c00', 'medium': '#fbc02d', 'low': '#fbc02d'}[log.risk_level] || '#666';
+                const riskLabel = {'critical': '严重', 'high': '高危', 'medium': '中危', 'low': '低危'}[log.risk_level] || log.risk_level;
+                
+                let detailSection = '';
+                if (analysisType === 'sql_injection' && log.payload) {
+                    detailSection += `<div style="font-size: 12px; color: #d32f2f; margin-top: 5px;"><strong>恶意Payload:</strong> <code style="background: #ffebee; padding: 2px 5px;">${escapeHtml(log.payload)}</code></div>`;
+                }
+                if (analysisType === 'xss' && (log.xss_type || log.type)) {
+                    detailSection += `<div style="font-size: 12px; color: #f57c00; margin-top: 5px;"><strong>XSS类型:</strong> ${escapeHtml(log.xss_type || log.type)}</div>`;
+                }
+                if (analysisType === 'directory_traversal' && (log.target_path || log.path)) {
+                    detailSection += `<div style="font-size: 12px; color: #fbc02d; margin-top: 5px;"><strong>目标路径:</strong> <code style="background: #fff8e1; padding: 2px 5px;">${escapeHtml(log.target_path || log.path)}</code></div>`;
+                }
+                
+                html += `
+                    <div style="padding: 15px; margin-bottom: 10px; background: #fafafa; border-left: 4px solid ${riskColor}; border-radius: 3px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                            <strong>${index + 1}. ${log.attack_type || '未知威胁'}</strong>
+                            <span style="padding: 3px 10px; background: ${riskColor}; color: white; border-radius: 3px; font-size: 12px;">${riskLabel}</span>
+                        </div>
+                        <div style="font-family: monospace; font-size: 12px; color: #666; margin-bottom: 8px; word-break: break-all;">${escapeHtml(log.raw_log || log.url || '')}</div>
+                        ${(log.risk_keywords && log.risk_keywords.length > 0) ? `<div style="margin-bottom: 8px; font-size: 12px;"><span style="color: #888;">🔎 初筛命中词:</span> ${log.risk_keywords.map(kw => `<button type="button" onclick="selectPromptTemplateForKeyword(decodeURIComponent('${encodeKeywordForOnclick(kw)}'))" style="background: #f0e6ff; border: 1px solid #d8c5ff; padding: 1px 5px; border-radius: 3px; font-size: 11px; cursor: pointer;">${escapeHtml(kw)}</button>`).join(' ')} <span style="color: #888; margin-left: 5px;">评分: ${log.initial_risk_score || 0}</span></div>` : ''}
+                        ${log.analysis_type ? `<div style="margin-bottom: 8px; font-size: 12px; color: #666;"><strong>本条使用提示词:</strong> ${escapeHtml(formatTemplateName(log.analysis_type))}</div>` : ''}
+                        ${log.conclusion ? `<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 15px; border-radius: 8px; margin-bottom: 10px;"><div style="font-size: 11px; opacity: 0.9; margin-bottom: 4px;">💡 分析结论</div><div style="font-size: 14px; font-weight: 500;">${escapeHtml(log.conclusion)}</div></div>` : ''}
+                        ${log.reason ? `<div style="font-size: 13px; color: #555; margin-bottom: 8px; line-height: 1.6;"><strong style="color: #666;">📋 分析理由:</strong> ${escapeHtml(log.reason)}</div>` : ''}
+                        ${detailSection}
+                        ${log.reasoning_content ? `<div style="margin-top: 10px; padding: 10px; background: #fff8e1; border-radius: 5px; font-size: 12px;"><div style="font-weight: 500; color: #ff8f00; margin-bottom: 5px;">🧠 思维链:</div><div style="color: #666; max-height: 100px; overflow-y: auto; white-space: pre-wrap;">${escapeHtml(log.reasoning_content)}</div></div>` : ''}
+                    </div>
+                `;
+            });
+            html += '</div>';
+        }
+        
+        // 显示正常的日志
+<!--        if (safeLogs.length > 0) {-->
+<!--            html += `<div style="padding: 20px; margin-top: 20px; background: #e8f5e9; border-radius: 8px; text-align: center;">-->
+<!--                <div style="font-size: 32px; margin-bottom: 10px;">✅</div>-->
+<!--                <div style="color: #2e7d32; font-size: 16px; font-weight: bold;">本次分析共检测 ${data.suspicious_count} 条正常日志</div>-->
+<!--                <div style="color: #666; font-size: 13px; margin-top: 5px;">已过滤为正常访问，不构成安全威胁</div>-->
+<!--            </div>`;-->
+<!--        } else if (!realThreats.length && data.total_logs > 0) {-->
+<!--            html += '<div style="padding: 30px; text-align: center; color: #4caf50; font-size: 18px;">🎉 未发现可疑行为，日志安全！</div>';-->
+<!--        } else if (!data.suspicious_logs || !data.suspicious_logs.length) {-->
+<!--            if (data.total_logs > 0) {-->
+<!--                html += '<div style="padding: 30px; text-align: center; color: #4caf50; font-size: 18px;">🎉 未发现可疑行为，日志安全！</div>';-->
+<!--            } else {-->
+<!--                html += '<div style="padding: 30px; text-align: center; color: #666; font-size: 16px;">没有可分析的日志数据</div>';-->
+<!--            }-->
+<!--        }-->
+        
+        html += '</div>';
+        contentDiv.innerHTML = html;
+        showMessage(`${analysisName}完成！`, 'success');
+    }
+    
+    // HTML转义
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    // 页面加载时初始化
+    document.addEventListener('DOMContentLoaded', function() {
+        loadImportList();
+        onModelTypeChange();
+        showPromptStructure();
+        
+        // 加载保存的 API Key
+        loadSavedApiKey();
+    });
+    
+    // 加载保存的 API Key
+    function loadSavedApiKey() {
+        const savedKey = localStorage.getItem('llm_api_key');
+        const saveCheckbox = document.getElementById('saveApiKey');
+        const apiKeyInput = document.getElementById('apiKey');
+        
+        if (savedKey && saveCheckbox) {
+            apiKeyInput.value = savedKey;
+            saveCheckbox.checked = true;
+            console.log('[API Key] ✅ 已加载保存的 API Key');
+        }
+    }
+    
+    // 切换保存 API Key 功能
+    function toggleSaveApiKey() {
+        const checkbox = document.getElementById('saveApiKey');
+        console.log(`[API Key] 保存功能: ${checkbox.checked ? '启用' : '禁用'}`);
+    }
+    
+    // 清除保存的 API Key
+    function clearSavedApiKey() {
+        localStorage.removeItem('llm_api_key');
+        document.getElementById('apiKey').value = '';
+        document.getElementById('saveApiKey').checked = false;
+        showMessage('✅ 已清除保存的 API Key', 'success');
+        console.log('[API Key] 🗑️ 已清除保存的 API Key');
+    }
+
+    // 点击弹窗外部关闭粘贴弹窗
+    window.addEventListener('click', function(event) {
+        const pasteModal = document.getElementById('pasteModal');
+        if (event.target === pasteModal) {
+            closePasteModal();
+        }
+    });
+</script>
+{% endblock %}

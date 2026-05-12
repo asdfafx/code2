@@ -1,0 +1,171 @@
+# 告警通知路由
+from flask import Blueprint, request, jsonify, session
+from app import db, csrf
+from app.services.alert_service import alert_service
+from functools import wraps
+
+bp = Blueprint('alerts', __name__)
+
+# 为 API 蓝图禁用 CSRF 保护
+csrf.exempt(bp)
+
+
+def login_required(f):
+    """登录验证装饰器"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return jsonify({'error': '请先登录'}), 401
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def admin_required(f):
+    """管理员权限验证装饰器"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return jsonify({'error': '请先登录'}), 401
+        
+        # 检查用户是否为管理员
+        from app.models import User
+        user = User.query.get(session['user_id'])
+        if not user or user.role != 'admin':
+            return jsonify({'error': '需要管理员权限'}), 403
+        
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+@bp.route('/config', methods=['GET'])
+@admin_required
+def get_alert_config():
+    """获取告警配置"""
+    try:
+        # 从配置文件或数据库中获取告警配置
+        # 这里简化处理，返回默认配置
+        config = {
+            'email_enabled': False,
+            'email_recipients': [],
+            'sms_enabled': False,
+            'phone_numbers': [],
+            'webhook_enabled': False,
+            'webhook_url': '',
+            'high_risk_threshold': 70,  # 高风险阈值
+            'medium_risk_threshold': 40  # 中风险阈值
+        }
+        
+        return jsonify({'config': config})
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/config', methods=['PUT'])
+@admin_required
+def update_alert_config():
+    """更新告警配置"""
+    try:
+        data = request.get_json()
+        
+        # 验证和保存配置
+        # 在实际应用中，应该将配置保存到数据库
+        config = {
+            'email_enabled': data.get('email_enabled', False),
+            'email_recipients': data.get('email_recipients', []),
+            'sms_enabled': data.get('sms_enabled', False),
+            'phone_numbers': data.get('phone_numbers', []),
+            'webhook_enabled': data.get('webhook_enabled', False),
+            'webhook_url': data.get('webhook_url', ''),
+            'high_risk_threshold': data.get('high_risk_threshold', 70),
+            'medium_risk_threshold': data.get('medium_risk_threshold', 40)
+        }
+        
+        # 这里应该将配置保存到数据库或配置文件
+        # 为了简化，我们只返回成功响应
+        
+        return jsonify({'message': '告警配置已更新', 'config': config})
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/test-email', methods=['POST'])
+@admin_required
+def test_email_alert():
+    """测试邮件告警"""
+    try:
+        data = request.get_json()
+        recipients = data.get('recipients', [])
+        
+        if not recipients:
+            return jsonify({'error': '请提供收件人邮箱地址'}), 400
+        
+        subject = "测试告警 - 日志分析系统"
+        message = "<p>这是一封测试邮件，用于验证邮件告警功能是否正常工作。</p>"
+        
+        success = alert_service.send_email_alert(subject, message, recipients)
+        
+        if success:
+            return jsonify({'message': '测试邮件已发送'})
+        else:
+            return jsonify({'error': '邮件发送失败'}), 500
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/test-sms', methods=['POST'])
+@admin_required
+def test_sms_alert():
+    """测试短信告警"""
+    try:
+        data = request.get_json()
+        phone_numbers = data.get('phone_numbers', [])
+        
+        if not phone_numbers:
+            return jsonify({'error': '请提供手机号码'}), 400
+        
+        message = "【日志分析系统】这是一条测试短信，用于验证短信告警功能是否正常工作。"
+        
+        success = alert_service.send_sms_alert(message, phone_numbers)
+        
+        if success:
+            return jsonify({'message': '测试短信已发送'})
+        else:
+            return jsonify({'error': '短信发送失败'}), 500
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/history', methods=['GET'])
+@login_required
+def get_alert_history():
+    """获取告警历史"""
+    try:
+        # 在实际应用中，应该从数据库中获取告警历史
+        # 这里返回模拟数据
+        alerts = [
+            {
+                'id': 1,
+                'type': 'high_risk',
+                'message': '检测到SQL注入攻击',
+                'ip_address': '192.168.1.100',
+                'timestamp': '2024-01-15 10:30:00',
+                'status': 'sent'
+            },
+            {
+                'id': 2,
+                'type': 'high_risk',
+                'message': '检测到XSS攻击',
+                'ip_address': '10.0.0.50',
+                'timestamp': '2024-01-15 09:15:00',
+                'status': 'sent'
+            }
+        ]
+        
+        return jsonify({'alerts': alerts, 'total': len(alerts)})
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

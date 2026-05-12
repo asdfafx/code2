@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+
+{% block title %}导出报告 - 日志分析系统{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">📤 导出报告</div>
+    <div class="card-body">
+        <div style="padding: 30px; text-align: center;">
+            <!-- 最后一次检测信息 -->
+            <div id="lastImportInfo" style="margin-bottom: 30px; padding: 20px; background: #f0f8ff; border-radius: 10px; text-align: left; display: none;">
+                <h4 style="margin-bottom: 15px; color: #667eea;">📋 最后一次检测信息</h4>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                    <div>
+                        <strong>文件名：</strong><span id="infoFilename">-</span>
+                    </div>
+                    <div>
+                        <strong>导入时间：</strong><span id="infoImportTime">-</span>
+                    </div>
+                    <div>
+                        <strong>总记录数：</strong><span id="infoTotalLines">-</span>
+                    </div>
+                    <div>
+                        <strong>已分析：</strong><span id="infoParsedLines">-</span>
+                    </div>
+                </div>
+            </div>
+            
+            <h3 style="margin-bottom: 20px;">选择导出格式</h3>
+            <p style="color: #666; margin-bottom: 30px;">将导出最后一次检测的分析结果</p>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; max-width: 800px; margin: 0 auto;">
+                <div style="padding: 30px; border: 2px solid #667eea; border-radius: 10px; background: #f5f6ff;">
+                    <h4 style="margin-bottom: 15px;">📊 CSV 格式</h4>
+                    <p style="color: #666; margin-bottom: 20px; font-size: 14px;">导出为 CSV 表格文件，适合数据分析和处理</p>
+                    <button class="btn btn-primary" onclick="exportCSV()" style="width: 100%;">下载 CSV</button>
+                </div>
+                
+                <div style="padding: 30px; border: 2px solid #4caf50; border-radius: 10px; background: #f0fff0;">
+                    <h4 style="margin-bottom: 15px;">📄 HTML 报告</h4>
+                    <p style="color: #666; margin-bottom: 20px; font-size: 14px;">生成完整的 HTML 分析报告，包含图表和统计数据</p>
+                    <button class="btn btn-success" onclick="exportHTML()" style="width: 100%;">下载 HTML</button>
+                </div>
+                
+                <div style="padding: 30px; border: 2px solid #ff9800; border-radius: 10px; background: #fff8f0;">
+                    <h4 style="margin-bottom: 15px;">📑 JSON 格式</h4>
+                    <p style="color: #666; margin-bottom: 20px; font-size: 14px;">导出原始 JSON 数据，适合程序处理和集成</p>
+                    <button class="btn btn-warning" onclick="exportJSON()" style="width: 100%; background: #ff9800; color: white;">下载 JSON</button>
+                </div>
+            </div>
+            
+            <div style="margin-top: 30px; padding: 20px; background: #f9f9f9; border-radius: 5px; text-align: left;">
+                <h4 style="margin-bottom: 10px;">📝 导出说明</h4>
+                <ul style="color: #666; line-height: 1.8;">
+                    <li>导出将包含最后一次检测的所有分析结果</li>
+                    <li>CSV 格式适合在 Excel 等工具中打开</li>
+                    <li>HTML 报告包含可视化图表，可直接在浏览器中查看</li>
+                    <li>JSON 格式适合与其他系统集成</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 页面加载时获取最后一次检测信息
+    document.addEventListener('DOMContentLoaded', async function() {
+        await loadLastImportInfo();
+    });
+
+    // 获取最后一次检测信息
+    async function loadLastImportInfo() {
+        try {
+            const response = await fetch(`${API_BASE}/logs/last`, {
+                credentials: 'include'
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                displayLastImportInfo(data);
+            } else if (response.status === 404) {
+                // 没有检测记录
+                document.getElementById('lastImportInfo').innerHTML = `
+                    <h4 style="margin-bottom: 15px; color: #f44336;">⚠️ 暂无检测记录</h4>
+                    <p style="color: #666;">请先导入日志文件并进行分析</p>
+                `;
+                document.getElementById('lastImportInfo').style.display = 'block';
+                
+                // 禁用导出按钮
+                const buttons = document.querySelectorAll('.card-body button');
+                buttons.forEach(btn => {
+                    btn.disabled = true;
+                    btn.style.opacity = '0.5';
+                    btn.style.cursor = 'not-allowed';
+                });
+            }
+        } catch (error) {
+            console.error('获取最后一次检测信息失败:', error);
+        }
+    }
+
+    // 显示最后一次检测信息
+    function displayLastImportInfo(data) {
+        document.getElementById('infoFilename').textContent = data.filename || '-';
+        document.getElementById('infoImportTime').textContent = data.import_time || '-';
+        document.getElementById('infoTotalLines').textContent = data.total_lines || '0';
+        document.getElementById('infoParsedLines').textContent = data.parsed_lines || '0';
+        document.getElementById('lastImportInfo').style.display = 'block';
+    }
+
+    // 导出 CSV
+    async function exportCSV() {
+        try {
+            showMessage('正在生成 CSV 文件...', 'info');
+            const response = await fetch(`${API_BASE}/export/csv`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include',
+                body: JSON.stringify({})
+            });
+            
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `analysis_report_${new Date().getTime()}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                showMessage('CSV 文件下载成功', 'success');
+            } else {
+                const error = await response.json();
+                showMessage(error.error || '导出失败', 'error');
+            }
+        } catch (error) {
+            console.error('导出失败:', error);
+            showMessage('导出失败', 'error');
+        }
+    }
+
+    // 导出 HTML
+    async function exportHTML() {
+        try {
+            showMessage('正在生成 HTML 报告...', 'info');
+            const response = await fetch(`${API_BASE}/export/html`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include',
+                body: JSON.stringify({})
+            });
+            
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `analysis_report_${new Date().getTime()}.html`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                showMessage('HTML 报告下载成功', 'success');
+            } else {
+                const error = await response.json();
+                showMessage(error.error || '导出失败', 'error');
+            }
+        } catch (error) {
+            console.error('导出失败:', error);
+            showMessage('导出失败', 'error');
+        }
+    }
+
+    // 导出 JSON
+    async function exportJSON() {
+        try {
+            showMessage('正在生成 JSON 文件...', 'info');
+            const response = await fetch(`${API_BASE}/export/json`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include',
+                body: JSON.stringify({})
+            });
+            
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `analysis_report_${new Date().getTime()}.json`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                showMessage('JSON 文件下载成功', 'success');
+            } else {
+                const error = await response.json();
+                showMessage(error.error || '导出失败', 'error');
+            }
+        } catch (error) {
+            console.error('导出失败:', error);
+            showMessage('导出失败', 'error');
+        }
+    }
+</script>
+{% endblock %}
