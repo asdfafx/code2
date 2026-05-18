@@ -78,37 +78,17 @@ def create_app(config_name='default'):
     def dashboard():
         from flask import render_template
         return render_template('dashboard.html')
+
+    @app.route('/operations')
+    def operations_page():
+        from flask import render_template
+        return render_template('operations.html')
     
     # 独立功能页面路由
     @app.route('/import')
     def import_page():
         from flask import render_template
         return render_template('import.html')
-    
-    @app.route('/analyze')
-    def analyze_page():
-        from flask import render_template
-        return render_template('analyze.html')
-    
-    @app.route('/stream')
-    def stream_page():
-        from flask import render_template
-        return render_template('stream.html')
-    
-    @app.route('/geo')
-    def geo_page():
-        from flask import render_template
-        return render_template('geo.html')
-    
-    @app.route('/timeline')
-    def timeline_page():
-        from flask import render_template
-        return render_template('timeline.html')
-    
-    @app.route('/realtime')
-    def realtime_page():
-        from flask import render_template
-        return render_template('realtime.html')
     
     @app.route('/export')
     def export_page():

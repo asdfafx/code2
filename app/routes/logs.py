@@ -6,6 +6,7 @@ from datetime import datetime
 from app import db, socketio, csrf
 from app.models import LogImport, LogEntry
 from app.services.log_parser import LogParser
+from app.services.realtime_monitor import real_time_monitor
 from app.services.rule_filter import RuleFilter
 from app.security import security
 from functools import wraps
@@ -94,7 +95,9 @@ def upload_log():
                 .order_by(LogEntry.created_at.desc()).limit(5).all()
             
             for entry in recent_entries:
-                socketio.emit('new_log', entry.to_dict())
+                log_payload = entry.to_dict()
+                real_time_monitor.record_log(log_payload)
+                socketio.emit('new_log', log_payload)
         
         return jsonify({
             'success': True,
@@ -153,7 +156,9 @@ def paste_log():
                 .order_by(LogEntry.created_at.desc()).limit(5).all()
             
             for entry in recent_entries:
-                socketio.emit('new_log', entry.to_dict())
+                log_payload = entry.to_dict()
+                real_time_monitor.record_log(log_payload)
+                socketio.emit('new_log', log_payload)
         
         return jsonify({
             'success': True,

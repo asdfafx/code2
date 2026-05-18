@@ -15,7 +15,7 @@ class RealTimeMonitor:
         self.monitor_thread = None
         self.lock = threading.Lock()
         
-    def add_client(self, client_id, emit_func):
+    def add_client(self, client_id, emit_func=None):
         """添加客户端连接"""
         with self.lock:
             self.clients[client_id] = {
@@ -32,28 +32,33 @@ class RealTimeMonitor:
                 del self.clients[client_id]
                 print(f"客户端 {client_id} 已断开")
                 
-    def broadcast_log(self, log_entry):
-        """向所有客户端广播日志条目"""
+    def record_log(self, log_entry):
+        """记录日志条目到最近日志缓冲区"""
         with self.lock:
-            # 添加到缓冲区
             self.log_buffer.append({
                 'timestamp': datetime.now().isoformat(),
                 'data': log_entry
             })
-            
-            # 发送给所有连接的客户端
-            disconnected = []
+
+    def broadcast_log(self, log_entry):
+        """向所有保存了 emit 函数的客户端广播日志条目"""
+        self.record_log(log_entry)
+
+        disconnected = []
+        with self.lock:
             for client_id, client_info in self.clients.items():
                 try:
-                    client_info['emit']('new_log', log_entry)
+                    emit_func = client_info.get('emit')
+                    if emit_func:
+                        emit_func('new_log', log_entry)
                     client_info['last_activity'] = datetime.now()
                 except Exception as e:
                     print(f"发送消息到客户端 {client_id} 失败: {e}")
                     disconnected.append(client_id)
-            
-            # 清理断开的客户端
-            for client_id in disconnected:
-                self.remove_client(client_id)
+
+        # 清理断开的客户端，避免在同一把锁内重复加锁。
+        for client_id in disconnected:
+            self.remove_client(client_id)
                 
     def get_recent_logs(self, count=50):
         """获取最近的日志"""
@@ -86,7 +91,7 @@ class RealTimeMonitor:
             return {
                 'connected_clients': len(self.clients),
                 'buffer_size': len(self.log_buffer),
-                'is_running': self.is_running
+                'is_running': self.is_running or len(self.clients) > 0
             }
 
 

@@ -1,6 +1,7 @@
 # 告警通知路由
 from flask import Blueprint, request, jsonify, session
 from app import db, csrf
+from app.models import LogEntry, LogImport
 from app.services.alert_service import alert_service
 from functools import wraps
 
@@ -144,26 +145,27 @@ def test_sms_alert():
 def get_alert_history():
     """获取告警历史"""
     try:
-        # 在实际应用中，应该从数据库中获取告警历史
-        # 这里返回模拟数据
-        alerts = [
-            {
-                'id': 1,
-                'type': 'high_risk',
-                'message': '检测到SQL注入攻击',
-                'ip_address': '192.168.1.100',
-                'timestamp': '2024-01-15 10:30:00',
-                'status': 'sent'
-            },
-            {
-                'id': 2,
-                'type': 'high_risk',
-                'message': '检测到XSS攻击',
-                'ip_address': '10.0.0.50',
-                'timestamp': '2024-01-15 09:15:00',
-                'status': 'sent'
-            }
-        ]
+        limit = request.args.get('limit', 20, type=int)
+        entries = LogEntry.query.join(LogImport).filter(
+            LogImport.user_id == session['user_id'],
+            LogEntry.initial_risk_score >= 40
+        ).order_by(LogEntry.request_time.desc(), LogEntry.created_at.desc()).limit(limit).all()
+
+        alerts = []
+        for entry in entries:
+            risk_score = entry.initial_risk_score or 0
+            alert_type = 'critical_risk' if risk_score >= 70 else 'high_risk'
+            timestamp = entry.request_time or entry.created_at
+            alerts.append({
+                'id': entry.entry_id,
+                'type': alert_type,
+                'message': f'检测到高风险请求，风险分 {risk_score}',
+                'ip_address': entry.ip_address,
+                'url': entry.url,
+                'risk_score': risk_score,
+                'timestamp': timestamp.strftime('%Y-%m-%d %H:%M:%S') if timestamp else None,
+                'status': 'active'
+            })
         
         return jsonify({'alerts': alerts, 'total': len(alerts)})
         

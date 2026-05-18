@@ -133,7 +133,7 @@ def analyze_import_stream():
             if result:
                 results.append(result)
                 # 统计攻击类型
-                attack_type = result.get('attack_type', '未知')
+                attack_type = result.get('attack_type') or '正常请求'
                 attack_types_count[attack_type] = attack_types_count.get(attack_type, 0) + 1
         
         return jsonify({

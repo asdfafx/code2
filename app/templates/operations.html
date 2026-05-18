@@ -1,0 +1,1049 @@
+{% extends "base.html" %}
+
+{% block title %}智能监控 - 日志分析系统{% endblock %}
+
+{% block extra_css %}
+<style>
+    .ops-toolbar {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: center;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+    }
+    .ops-title h2 {
+        font-size: 24px;
+        margin-bottom: 6px;
+        color: #222;
+    }
+    .ops-title p {
+        color: #666;
+        font-size: 14px;
+    }
+    .ops-actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    .ops-grid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 20px;
+    }
+    .ops-panel {
+        background: #fff;
+        border: 1px solid #e8e8ef;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(20, 24, 40, 0.06);
+        overflow: hidden;
+    }
+    .ops-panel.wide {
+        grid-column: span 8;
+    }
+    .ops-panel.side {
+        grid-column: span 4;
+    }
+    .ops-panel.full {
+        grid-column: 1 / -1;
+    }
+    .ops-panel-header {
+        padding: 16px 18px;
+        border-bottom: 1px solid #eeeeF3;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+    }
+    .ops-panel-header h3 {
+        font-size: 17px;
+        color: #222;
+    }
+    .ops-panel-header span {
+        color: #777;
+        font-size: 13px;
+    }
+    .ops-panel-body {
+        padding: 18px;
+    }
+    .ops-metrics {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 12px;
+        margin-bottom: 18px;
+    }
+    .ops-metric {
+        border: 1px solid #ececf2;
+        border-radius: 8px;
+        padding: 14px;
+        background: #fbfbfd;
+        min-height: 86px;
+    }
+    .ops-metric-value {
+        font-size: 26px;
+        line-height: 1.1;
+        font-weight: 700;
+        color: #334155;
+        margin-bottom: 8px;
+        word-break: break-word;
+    }
+    .ops-metric-label {
+        color: #6b7280;
+        font-size: 13px;
+    }
+    .ops-split {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(320px, 0.8fr);
+        gap: 18px;
+        align-items: start;
+    }
+    .ops-chart {
+        height: 260px;
+        position: relative;
+    }
+    .ops-list {
+        display: grid;
+        gap: 10px;
+        max-height: 360px;
+        overflow-y: auto;
+    }
+    .ops-list-item {
+        border: 1px solid #ececf2;
+        border-left: 4px solid #64748b;
+        border-radius: 8px;
+        padding: 12px;
+        background: #fff;
+    }
+    .ops-list-item.high {
+        border-left-color: #ef4444;
+    }
+    .ops-list-item.medium {
+        border-left-color: #f59e0b;
+    }
+    .ops-list-item.low {
+        border-left-color: #10b981;
+    }
+    .behavior-timeline {
+        position: relative;
+        display: grid;
+        gap: 10px;
+        max-height: 420px;
+        overflow-y: auto;
+        padding-left: 14px;
+    }
+    .behavior-timeline::before {
+        content: "";
+        position: absolute;
+        left: 6px;
+        top: 4px;
+        bottom: 4px;
+        width: 2px;
+        background: #e5e7eb;
+    }
+    .timeline-event {
+        position: relative;
+        border: 1px solid #ececf2;
+        border-radius: 8px;
+        background: #fff;
+        padding: 12px 12px 12px 16px;
+    }
+    .timeline-event::before {
+        content: "";
+        position: absolute;
+        left: -13px;
+        top: 18px;
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: #10b981;
+        border: 2px solid #fff;
+        box-shadow: 0 0 0 1px #d1d5db;
+    }
+    .timeline-event.attack::before {
+        background: #ef4444;
+    }
+    .timeline-event-title {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        font-weight: 700;
+        color: #222;
+        margin-bottom: 6px;
+    }
+    .timeline-event-path {
+        color: #374151;
+        font-size: 13px;
+        line-height: 1.45;
+        word-break: break-word;
+        margin-bottom: 6px;
+    }
+    .timeline-event-meta {
+        color: #6b7280;
+        font-size: 12px;
+        line-height: 1.5;
+    }
+    .link-btn {
+        border: none;
+        background: transparent;
+        color: #4f46e5;
+        cursor: pointer;
+        font-size: 13px;
+        padding: 0;
+    }
+    .link-btn:hover {
+        text-decoration: underline;
+    }
+    .ops-list-title {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        font-weight: 700;
+        margin-bottom: 6px;
+        color: #222;
+    }
+    .ops-list-meta {
+        color: #6b7280;
+        font-size: 13px;
+        line-height: 1.5;
+        word-break: break-word;
+    }
+    .ops-table-wrap {
+        overflow-x: auto;
+    }
+    .ops-table th,
+    .ops-table td {
+        white-space: nowrap;
+        font-size: 13px;
+    }
+    .ops-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        color: #64748b;
+    }
+    .status-dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 999px;
+        background: #94a3b8;
+        display: inline-block;
+    }
+    .status-dot.online {
+        background: #22c55e;
+    }
+    .status-dot.warning {
+        background: #f59e0b;
+    }
+    .risk-pill {
+        display: inline-block;
+        min-width: 48px;
+        text-align: center;
+        padding: 3px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        background: #f1f5f9;
+        color: #334155;
+    }
+    .risk-pill.high {
+        background: #fee2e2;
+        color: #b91c1c;
+    }
+    .risk-pill.medium {
+        background: #fef3c7;
+        color: #92400e;
+    }
+    .risk-pill.low {
+        background: #dcfce7;
+        color: #166534;
+    }
+    .empty-state {
+        color: #888;
+        text-align: center;
+        padding: 28px 12px;
+        border: 1px dashed #ddd;
+        border-radius: 8px;
+        background: #fcfcfd;
+    }
+    .stream-console {
+        background: #0f172a;
+        color: #dbeafe;
+        border-radius: 8px;
+        padding: 14px;
+        min-height: 300px;
+        max-height: 420px;
+        overflow-y: auto;
+        font-family: Consolas, Monaco, monospace;
+        font-size: 13px;
+    }
+    .stream-entry {
+        padding: 9px 0;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+    }
+    .stream-entry:last-child {
+        border-bottom: 0;
+    }
+    .stream-entry strong {
+        color: #fff;
+    }
+    .stream-entry .risk {
+        color: #fbbf24;
+    }
+    @media (max-width: 1000px) {
+        .ops-panel.wide,
+        .ops-panel.side {
+            grid-column: 1 / -1;
+        }
+        .ops-split {
+            grid-template-columns: 1fr;
+        }
+    }
+    @media (max-width: 720px) {
+        .ops-actions,
+        .ops-actions .btn {
+            width: 100%;
+        }
+        .ops-toolbar {
+            align-items: stretch;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ops-toolbar">
+    <div class="ops-title">
+        <h2>智能监控中心</h2>
+        <p>地理分析与行为时间线、机器学习异常检测、实时监控和告警统一运行视图</p>
+    </div>
+    <div class="ops-actions">
+        <button class="btn btn-primary" onclick="loadOperations()">刷新全部</button>
+        <button class="btn btn-success" onclick="runLatestImportStream()">分析最新导入</button>
+        <button class="btn btn-primary" onclick="runMLDetection()">执行 ML 检测</button>
+        <button class="btn btn-success" id="connectRealtimeBtn" onclick="connectRealtime()">连接实时监控</button>
+        <button class="btn btn-danger" id="disconnectRealtimeBtn" onclick="disconnectRealtime()" style="display:none;">断开实时监控</button>
+    </div>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-number" id="geoTotalIPs">0</div>
+        <div class="stat-label">独立 IP</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number" id="timelineAttackers">0</div>
+        <div class="stat-label">行为时间线攻击源</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number" id="mlAnomalyCount">0</div>
+        <div class="stat-label">ML 异常检测</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number" id="streamAnalyzed">0</div>
+        <div class="stat-label">实时流式分析</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number" id="alertCount">0</div>
+        <div class="stat-label">活动告警</div>
+    </div>
+</div>
+
+<div class="ops-grid">
+    <section class="ops-panel wide">
+        <div class="ops-panel-header">
+            <h3>地理分析与行为时间线</h3>
+            <span id="geoStatus">等待加载</span>
+        </div>
+        <div class="ops-panel-body">
+            <div class="ops-metrics">
+                <div class="ops-metric">
+                    <div class="ops-metric-value" id="geoCountries">0</div>
+                    <div class="ops-metric-label">国家/地区</div>
+                </div>
+                <div class="ops-metric">
+                    <div class="ops-metric-value" id="geoAttackRate">0%</div>
+                    <div class="ops-metric-label">平均攻击率</div>
+                </div>
+                <div class="ops-metric">
+                    <div class="ops-metric-value" id="geoAnomalies">0</div>
+                    <div class="ops-metric-label">异常地区</div>
+                </div>
+                <div class="ops-metric">
+                    <div class="ops-metric-value" id="attackChains">0</div>
+                    <div class="ops-metric-label">攻击链路</div>
+                </div>
+            </div>
+            <div class="ops-split">
+                <div>
+                    <div class="ops-chart"><canvas id="countryChart"></canvas></div>
+                </div>
+                <div>
+                    <h4 style="margin-bottom: 10px;">Top 攻击源</h4>
+                    <div class="ops-table-wrap">
+                        <table class="ops-table">
+                            <thead>
+                                <tr>
+                                    <th>IP</th>
+                                    <th>请求</th>
+                                    <th>攻击</th>
+                                    <th>攻击率</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="topAttackersBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div style="margin-top: 18px;">
+                <div class="ops-panel" style="box-shadow:none; margin-bottom:0;">
+                    <div class="ops-panel-header">
+                        <h3>行为事件时间轴</h3>
+                        <span id="timelineSelectedIP">等待选择 IP</span>
+                    </div>
+                    <div class="ops-panel-body">
+                        <div id="timelineSummary" class="ops-metrics" style="margin-bottom: 14px;">
+                            <div class="ops-metric">
+                                <div class="ops-metric-value" id="timelineTotalRequests">0</div>
+                                <div class="ops-metric-label">请求总数</div>
+                            </div>
+                            <div class="ops-metric">
+                                <div class="ops-metric-value" id="timelineAttackCount">0</div>
+                                <div class="ops-metric-label">攻击事件</div>
+                            </div>
+                            <div class="ops-metric">
+                                <div class="ops-metric-value" id="timelineSequenceCount">0</div>
+                                <div class="ops-metric-label">连续攻击序列</div>
+                            </div>
+                            <div class="ops-metric">
+                                <div class="ops-metric-value" id="timelineDuration">0 秒</div>
+                                <div class="ops-metric-label">活动跨度</div>
+                            </div>
+                        </div>
+                        <div id="behaviorTimeline" class="behavior-timeline">
+                            <div class="empty-state">从 Top 攻击源选择一个 IP 后，这里会按时间展示请求行为。</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="ops-split" style="margin-top: 18px;">
+                <div>
+                    <h4 style="margin-bottom: 10px;">攻击链路</h4>
+                    <div id="chainList" class="ops-list"></div>
+                </div>
+                <div>
+                    <h4 style="margin-bottom: 10px;">行为模式</h4>
+                    <div id="patternList" class="ops-list"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="ops-panel side">
+        <div class="ops-panel-header">
+            <h3>机器学习异常检测</h3>
+            <span id="mlStatus">等待检测</span>
+        </div>
+        <div class="ops-panel-body">
+            <div class="ops-metrics">
+                <div class="ops-metric">
+                    <div class="ops-metric-value" id="mlTotalEntries">0</div>
+                    <div class="ops-metric-label">参与样本</div>
+                </div>
+                <div class="ops-metric">
+                    <div class="ops-metric-value" id="mlAnomalyRate">0%</div>
+                    <div class="ops-metric-label">异常率</div>
+                </div>
+            </div>
+            <div class="ops-chart" style="height: 210px;"><canvas id="mlChart"></canvas></div>
+            <div style="display:flex; gap:10px; margin: 14px 0; flex-wrap:wrap;">
+                <button class="btn btn-primary" onclick="compareMLResults()">规则对比</button>
+                <button class="btn btn-success" onclick="trainMLModel()">重新训练</button>
+            </div>
+            <div id="mlAnomalyList" class="ops-list"></div>
+        </div>
+    </section>
+
+    <section class="ops-panel wide">
+        <div class="ops-panel-header">
+            <h3>实时监控</h3>
+            <span class="ops-status"><span id="realtimeDot" class="status-dot"></span><span id="realtimeStatus">未连接</span></span>
+        </div>
+        <div class="ops-panel-body">
+            <div class="ops-metrics">
+                <div class="ops-metric">
+                    <div class="ops-metric-value" id="realtimeClients">0</div>
+                    <div class="ops-metric-label">连接客户端</div>
+                </div>
+                <div class="ops-metric">
+                    <div class="ops-metric-value" id="realtimeBuffer">0</div>
+                    <div class="ops-metric-label">最近日志缓存</div>
+                </div>
+                <div class="ops-metric">
+                    <div class="ops-metric-value" id="streamAnomalyCount">0</div>
+                    <div class="ops-metric-label">流式异常</div>
+                </div>
+                <div class="ops-metric">
+                    <div class="ops-metric-value" id="streamAvgRisk">0</div>
+                    <div class="ops-metric-label">平均风险分</div>
+                </div>
+            </div>
+            <div id="liveLogConsole" class="stream-console">
+                <div class="empty-state" style="background: transparent; border-color: rgba(148, 163, 184, .35); color: #cbd5e1;">连接实时监控后，这里会显示上传、粘贴或导入产生的新日志事件。</div>
+            </div>
+        </div>
+    </section>
+
+    <section class="ops-panel side">
+        <div class="ops-panel-header">
+            <h3>告警</h3>
+            <span id="alertStatus">等待加载</span>
+        </div>
+        <div class="ops-panel-body">
+            <div id="alertList" class="ops-list"></div>
+        </div>
+    </section>
+
+    <section class="ops-panel full">
+        <div class="ops-panel-header">
+            <h3>ML 与规则检测对比</h3>
+            <span id="compareStatus">未运行</span>
+        </div>
+        <div class="ops-panel-body">
+            <div class="ops-split">
+                <div class="ops-chart"><canvas id="compareChart"></canvas></div>
+                <div id="compareSummary" class="ops-list">
+                    <div class="empty-state">点击“规则对比”查看 ML 和规则检测的重合情况。</div>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+<script>
+    let countryChart = null;
+    let mlChart = null;
+    let compareChart = null;
+    let realtimeSocket = null;
+    let liveLogCount = 0;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        loadOperations();
+    });
+
+    async function apiGet(path) {
+        const response = await fetch(`${API_BASE}${path}`, { credentials: 'include' });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.error || `请求失败: ${response.status}`);
+        }
+        return data;
+    }
+
+    async function apiPost(path, body = {}) {
+        const response = await fetch(`${API_BASE}${path}`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.error || `请求失败: ${response.status}`);
+        }
+        return data;
+    }
+
+    async function loadOperations() {
+        await Promise.allSettled([
+            loadGeoTimeline(),
+            runMLDetection(false),
+            loadStreamStats(),
+            loadAlertHistory()
+        ]);
+    }
+
+    async function loadGeoTimeline() {
+        setText('geoStatus', '加载中');
+        try {
+            const [geo, attackers, chains, patterns] = await Promise.all([
+                apiGet('/geo/stats'),
+                apiGet('/timeline/top-attackers?limit=8'),
+                apiGet('/timeline/chains'),
+                apiGet('/timeline/patterns')
+            ]);
+
+            setText('geoTotalIPs', geo.total_ips || 0);
+            setText('geoCountries', geo.total_countries || 0);
+            setText('geoAttackRate', `${formatNumber(geo.avg_attack_rate || 0)}%`);
+            setText('geoAnomalies', (geo.anomalies || []).length);
+            setText('timelineAttackers', attackers.total_unique_attackers || 0);
+            setText('attackChains', chains.total_chains || 0);
+            setText('geoStatus', '已更新');
+
+            renderCountryChart(geo.location_distribution || []);
+            renderTopAttackers(attackers.attackers || []);
+            if ((attackers.attackers || []).length) {
+                await loadBehaviorTimeline(attackers.attackers[0].ip_address);
+            } else {
+                resetBehaviorTimeline('暂无可展示的攻击源时间轴');
+            }
+            renderChains(chains.chains || []);
+            renderPatterns(patterns.summary || {});
+        } catch (error) {
+            setText('geoStatus', '加载失败');
+            renderEmpty('topAttackersBody', '暂无攻击源数据', true);
+            resetBehaviorTimeline(error.message);
+            renderEmpty('chainList', error.message);
+            renderEmpty('patternList', '暂无行为模式数据');
+        }
+    }
+
+    async function loadBehaviorTimeline(ipAddress) {
+        if (!ipAddress) {
+            resetBehaviorTimeline('请选择一个 IP 查看行为时间线');
+            return;
+        }
+
+        setText('timelineSelectedIP', `加载中：${ipAddress}`);
+        try {
+            const data = await apiGet(`/timeline/ip/${encodeURIComponent(ipAddress)}`);
+            const timelineData = data.timeline || {};
+            const stats = timelineData.statistics || {};
+
+            setText('timelineSelectedIP', `当前 IP：${timelineData.ip_address || ipAddress}`);
+            setText('timelineTotalRequests', stats.total_requests || 0);
+            setText('timelineAttackCount', stats.attack_count || 0);
+            setText('timelineSequenceCount', stats.sequence_count || 0);
+            setText('timelineDuration', formatDuration(stats.duration_seconds || 0));
+            renderBehaviorTimeline(timelineData.timeline || []);
+        } catch (error) {
+            setText('timelineSelectedIP', `加载失败：${ipAddress}`);
+            resetBehaviorTimeline(error.message);
+        }
+    }
+
+    function resetBehaviorTimeline(message) {
+        setText('timelineSelectedIP', '等待选择 IP');
+        setText('timelineTotalRequests', 0);
+        setText('timelineAttackCount', 0);
+        setText('timelineSequenceCount', 0);
+        setText('timelineDuration', '0 秒');
+        renderEmpty('behaviorTimeline', message);
+    }
+
+    async function runMLDetection(showToast = true) {
+        setText('mlStatus', '检测中');
+        try {
+            const data = await apiGet('/ml/detect?threshold=0');
+            setText('mlTotalEntries', data.total_entries || 0);
+            setText('mlAnomalyCount', data.total_anomalies || 0);
+            setText('mlAnomalyRate', `${formatNumber(data.anomaly_rate || 0)}%`);
+            setText('mlStatus', '检测完成');
+            renderMLChart(data.total_entries || 0, data.total_anomalies || 0);
+            renderMLAnomalies(data.anomalies || []);
+            if (showToast) showMessage('ML 异常检测完成', 'success');
+        } catch (error) {
+            setText('mlStatus', '检测失败');
+            renderMLChart(0, 0);
+            renderEmpty('mlAnomalyList', error.message);
+            if (showToast) showMessage(error.message, 'warning');
+        }
+    }
+
+    async function trainMLModel() {
+        try {
+            setText('mlStatus', '训练中');
+            const data = await apiPost('/ml/train');
+            showMessage(`模型训练完成，样本数 ${data.training_samples || 0}`, 'success');
+            await runMLDetection(false);
+        } catch (error) {
+            setText('mlStatus', '训练失败');
+            showMessage(error.message, 'error');
+        }
+    }
+
+    async function compareMLResults() {
+        setText('compareStatus', '对比中');
+        try {
+            const data = await apiGet('/ml/compare');
+            setText('compareStatus', '对比完成');
+            renderCompareChart(data);
+            document.getElementById('compareSummary').innerHTML = [
+                summaryItem('总样本', data.total_entries),
+                summaryItem('ML 检出', `${data.ml_detected} (${formatNumber(data.ml_rate)}%)`),
+                summaryItem('规则检出', `${data.rule_detected} (${formatNumber(data.rule_rate)}%)`),
+                summaryItem('共同检出', data.both_detected),
+                summaryItem('一致率', `${formatNumber(data.agreement_rate)}%`)
+            ].join('');
+        } catch (error) {
+            setText('compareStatus', '对比失败');
+            renderEmpty('compareSummary', error.message);
+        }
+    }
+
+    async function loadStreamStats() {
+        try {
+            const [stats, recent, anomalies] = await Promise.all([
+                apiGet('/stream/statistics'),
+                apiGet('/stream/recent?count=20'),
+                apiGet('/stream/anomalies?count=20')
+            ]);
+
+            setText('streamAnalyzed', stats.total_analyzed || 0);
+            setText('streamAnomalyCount', stats.anomaly_count || anomalies.total_anomalies || 0);
+            setText('streamAvgRisk', formatNumber(stats.avg_risk_score || 0));
+
+            const recentAnalyses = recent.analyses || [];
+            if (!realtimeSocket && recentAnalyses.length) {
+                renderRecentStreamAnalyses(recentAnalyses);
+            }
+        } catch (error) {
+            showMessage(`实时流式统计加载失败: ${error.message}`, 'warning');
+        }
+    }
+
+    async function runLatestImportStream() {
+        try {
+            const logList = await apiGet('/logs/list?per_page=1');
+            const latest = (logList.imports || [])[0];
+            if (!latest) {
+                showMessage('没有可分析的导入任务', 'warning');
+                return;
+            }
+            const data = await apiPost('/stream/analyze-import', { import_id: latest.import_id });
+            showMessage(data.message || '最新导入已完成流式分析', 'success');
+            await loadStreamStats();
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    }
+
+    async function loadAlertHistory() {
+        setText('alertStatus', '加载中');
+        try {
+            const data = await apiGet('/alerts/history?limit=20');
+            const alerts = data.alerts || [];
+            setText('alertCount', alerts.length);
+            setText('alertStatus', alerts.length ? '有活动告警' : '暂无告警');
+            renderAlerts(alerts);
+        } catch (error) {
+            setText('alertStatus', '加载失败');
+            renderEmpty('alertList', error.message);
+        }
+    }
+
+    function connectRealtime() {
+        if (realtimeSocket) return;
+        if (typeof io === 'undefined') {
+            showMessage('Socket.IO 客户端未加载，请检查网络或静态资源', 'error');
+            return;
+        }
+
+        realtimeSocket = io({ withCredentials: true });
+
+        realtimeSocket.on('connect', function() {
+            setRealtimeState(true, '已连接');
+            realtimeSocket.emit('subscribe_logs', {});
+            realtimeSocket.emit('get_stats');
+            showMessage('实时监控已连接', 'success');
+        });
+
+        realtimeSocket.on('connected', function(data) {
+            if (data && data.message) setText('realtimeStatus', data.message);
+        });
+
+        realtimeSocket.on('new_log', function(logData) {
+            addLiveLog(logData);
+            if (realtimeSocket) realtimeSocket.emit('get_stats');
+        });
+
+        realtimeSocket.on('stats_update', function(stats) {
+            setText('realtimeClients', stats.connected_clients || 0);
+            setText('realtimeBuffer', stats.buffer_size || 0);
+        });
+
+        realtimeSocket.on('error', function(data) {
+            showMessage((data && data.message) || '实时监控连接错误', 'error');
+        });
+
+        realtimeSocket.on('disconnect', function() {
+            setRealtimeState(false, '已断开');
+            realtimeSocket = null;
+        });
+    }
+
+    function disconnectRealtime() {
+        if (realtimeSocket) {
+            realtimeSocket.disconnect();
+            realtimeSocket = null;
+        }
+        setRealtimeState(false, '未连接');
+    }
+
+    function setRealtimeState(connected, text) {
+        setText('realtimeStatus', text);
+        document.getElementById('realtimeDot').classList.toggle('online', connected);
+        document.getElementById('connectRealtimeBtn').style.display = connected ? 'none' : 'inline-block';
+        document.getElementById('disconnectRealtimeBtn').style.display = connected ? 'inline-block' : 'none';
+    }
+
+    function addLiveLog(logData) {
+        const consoleEl = document.getElementById('liveLogConsole');
+        if (consoleEl.querySelector('.empty-state')) consoleEl.innerHTML = '';
+        liveLogCount += 1;
+
+        const riskScore = logData.initial_risk_score ?? logData.adjusted_risk_score ?? logData.risk_score ?? 0;
+        const method = logData.method || 'GET';
+        const url = logData.url || logData.request || '';
+        const entry = document.createElement('div');
+        entry.className = 'stream-entry';
+        entry.innerHTML = `
+            <div><strong>${escapeHtml(logData.ip_address || '未知 IP')}</strong> ${escapeHtml(method)} ${escapeHtml(shorten(url, 120))}</div>
+            <div><span>${new Date().toLocaleString()}</span> | <span class="risk">风险分 ${escapeHtml(String(riskScore))}</span></div>
+        `;
+        consoleEl.insertBefore(entry, consoleEl.firstChild);
+        while (consoleEl.children.length > 120) {
+            consoleEl.removeChild(consoleEl.lastChild);
+        }
+    }
+
+    function renderRecentStreamAnalyses(analyses) {
+        const consoleEl = document.getElementById('liveLogConsole');
+        consoleEl.innerHTML = '';
+        analyses.slice().reverse().forEach(addLiveLog);
+    }
+
+    function renderCountryChart(rows) {
+        const labels = rows.slice(0, 8).map(item => item.country || '未知');
+        const requests = rows.slice(0, 8).map(item => item.total_requests || 0);
+        const attacks = rows.slice(0, 8).map(item => item.attack_count || 0);
+        const ctx = document.getElementById('countryChart');
+        if (countryChart) countryChart.destroy();
+        countryChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [
+                    { label: '请求数', data: requests, backgroundColor: '#3b82f6' },
+                    { label: '攻击数', data: attacks, backgroundColor: '#ef4444' }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+    }
+
+    function renderMLChart(total, anomalies) {
+        const normal = Math.max(total - anomalies, 0);
+        const ctx = document.getElementById('mlChart');
+        if (mlChart) mlChart.destroy();
+        mlChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['正常', '异常'],
+                datasets: [{ data: [normal, anomalies], backgroundColor: ['#10b981', '#ef4444'] }]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+    }
+
+    function renderCompareChart(data) {
+        const ctx = document.getElementById('compareChart');
+        if (compareChart) compareChart.destroy();
+        compareChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['ML 检出', '规则检出', '共同检出', '仅 ML', '仅规则'],
+                datasets: [{
+                    label: '条目数',
+                    data: [
+                        data.ml_detected || 0,
+                        data.rule_detected || 0,
+                        data.both_detected || 0,
+                        data.only_ml_detected || 0,
+                        data.only_rule_detected || 0
+                    ],
+                    backgroundColor: ['#3b82f6', '#f59e0b', '#10b981', '#6366f1', '#ef4444']
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+    }
+
+    function renderTopAttackers(attackers) {
+        const body = document.getElementById('topAttackersBody');
+        if (!attackers.length) {
+            renderEmpty('topAttackersBody', '暂无攻击源数据', true);
+            return;
+        }
+        body.innerHTML = attackers.map(item => `
+            <tr>
+                <td>${escapeHtml(item.ip_address)}</td>
+                <td>${item.total_requests || 0}</td>
+                <td>${item.attack_count || 0}</td>
+                <td><span class="risk-pill ${riskClass(item.attack_rate || 0)}">${formatNumber(item.attack_rate || 0)}%</span></td>
+                <td><button class="link-btn" onclick="loadBehaviorTimeline('${escapeJsString(item.ip_address)}')">时间轴</button></td>
+            </tr>
+        `).join('');
+    }
+
+    function renderBehaviorTimeline(events) {
+        const container = document.getElementById('behaviorTimeline');
+        if (!events.length) {
+            renderEmpty('behaviorTimeline', '该 IP 暂无行为事件');
+            return;
+        }
+
+        container.innerHTML = events.map(event => {
+            const riskScore = event.risk_score || 0;
+            const status = event.is_attack ? '攻击行为' : '正常请求';
+            const statusClass = event.is_attack ? 'high' : 'low';
+            return `
+                <div class="timeline-event ${event.is_attack ? 'attack' : ''}">
+                    <div class="timeline-event-title">
+                        <span>${escapeHtml(event.method || 'GET')} ${escapeHtml(status)}</span>
+                        <span class="risk-pill ${statusClass}">风险 ${riskScore}</span>
+                    </div>
+                    <div class="timeline-event-path">${escapeHtml(shorten(event.url || '', 150))}</div>
+                    <div class="timeline-event-meta">
+                        ${escapeHtml(formatDateTime(event.timestamp))} | 状态码 ${escapeHtml(event.status_code ?? '-')}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function renderChains(chains) {
+        if (!chains.length) {
+            renderEmpty('chainList', '未检测到连续攻击链路');
+            return;
+        }
+        document.getElementById('chainList').innerHTML = chains.slice(0, 6).map((chain, index) => `
+            <div class="ops-list-item ${chain.severity === 'critical' ? 'high' : 'medium'}">
+                <div class="ops-list-title">
+                    <span>链路 #${index + 1}</span>
+                    <span>${escapeHtml(chain.severity || 'medium')}</span>
+                </div>
+                <div class="ops-list-meta">
+                    长度 ${chain.chain_length || 0}，IP ${chain.ip_count || 0} 个，
+                    持续 ${formatDuration(chain.duration_seconds || 0)}
+                </div>
+                <div class="ops-list-meta">类型：${escapeHtml((chain.attack_types || []).join(', ') || '未分类')}</div>
+            </div>
+        `).join('');
+    }
+
+    function renderPatterns(summary) {
+        const rows = [
+            ['暴力破解', summary.brute_force_count || 0],
+            ['扫描行为', summary.scanning_count || 0],
+            ['分布式攻击', summary.distributed_count || 0],
+            ['持续攻击', summary.persistent_count || 0]
+        ];
+        document.getElementById('patternList').innerHTML = rows.map(([name, count]) => `
+            <div class="ops-list-item ${count > 0 ? 'medium' : 'low'}">
+                <div class="ops-list-title"><span>${name}</span><span>${count}</span></div>
+                <div class="ops-list-meta">${count > 0 ? '需要关注该类行为模式' : '当前未发现明显模式'}</div>
+            </div>
+        `).join('');
+    }
+
+    function renderMLAnomalies(anomalies) {
+        if (!anomalies.length) {
+            renderEmpty('mlAnomalyList', '当前 ML 未检测到异常条目');
+            return;
+        }
+        document.getElementById('mlAnomalyList').innerHTML = anomalies.slice(0, 12).map(item => `
+            <div class="ops-list-item high">
+                <div class="ops-list-title">
+                    <span>${escapeHtml(item.ip_address || '未知 IP')}</span>
+                    <span>${formatNumber(item.anomaly_score || 0, 4)}</span>
+                </div>
+                <div class="ops-list-meta">${escapeHtml(shorten(item.url || '', 110))}</div>
+                <div class="ops-list-meta">风险分 ${item.risk_score || 0} | ${escapeHtml(item.timestamp || '')}</div>
+            </div>
+        `).join('');
+    }
+
+    function renderAlerts(alerts) {
+        if (!alerts.length) {
+            renderEmpty('alertList', '暂无活动告警');
+            return;
+        }
+        document.getElementById('alertList').innerHTML = alerts.map(alert => `
+            <div class="ops-list-item ${alert.risk_score >= 70 ? 'high' : 'medium'}">
+                <div class="ops-list-title">
+                    <span>${escapeHtml(alert.ip_address || '未知 IP')}</span>
+                    <span>${escapeHtml(alert.status || 'active')}</span>
+                </div>
+                <div class="ops-list-meta">${escapeHtml(alert.message || '')}</div>
+                <div class="ops-list-meta">${escapeHtml(shorten(alert.url || '', 100))}</div>
+                <div class="ops-list-meta">${escapeHtml(alert.timestamp || '')}</div>
+            </div>
+        `).join('');
+    }
+
+    function summaryItem(label, value) {
+        return `
+            <div class="ops-list-item low">
+                <div class="ops-list-title"><span>${label}</span><span>${value ?? 0}</span></div>
+            </div>
+        `;
+    }
+
+    function renderEmpty(id, message, asTableRow = false) {
+        const element = document.getElementById(id);
+        if (asTableRow) {
+            element.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#888;">${escapeHtml(message)}</td></tr>`;
+        } else {
+            element.innerHTML = `<div class="empty-state">${escapeHtml(message)}</div>`;
+        }
+    }
+
+    function riskClass(rate) {
+        if (rate >= 50) return 'high';
+        if (rate >= 20) return 'medium';
+        return 'low';
+    }
+
+    function formatDuration(seconds) {
+        if (seconds < 60) return `${Math.round(seconds)} 秒`;
+        if (seconds < 3600) return `${Math.round(seconds / 60)} 分钟`;
+        return `${formatNumber(seconds / 3600)} 小时`;
+    }
+
+    function formatNumber(value, digits = 1) {
+        const number = Number(value || 0);
+        return Number.isInteger(number) ? String(number) : number.toFixed(digits);
+    }
+
+    function shorten(text, maxLength) {
+        const value = String(text || '');
+        return value.length > maxLength ? `${value.slice(0, maxLength - 3)}...` : value;
+    }
+
+    function formatDateTime(value) {
+        if (!value) return '未知时间';
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+    }
+
+    function escapeJsString(value) {
+        return String(value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    }
+
+    function escapeHtml(value) {
+        const div = document.createElement('div');
+        div.textContent = value == null ? '' : String(value);
+        return div.innerHTML;
+    }
+
+    function setText(id, value) {
+        const element = document.getElementById(id);
+        if (element) element.textContent = value;
+    }
+</script>
+{% endblock %}
