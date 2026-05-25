@@ -60,15 +60,6 @@ def create_default_model():
         print("✓ LLM 模型配置已存在")
 
 
-def init_database():
-    """初始化数据库"""
-    print("正在初始化数据库...")
-    db.create_all()
-    create_admin_user()
-    create_default_model()
-    print("✓ 数据库初始化完成")
-
-
 if __name__ == '__main__':
     # 从环境变量获取配置，默认为 development
     config_name = os.environ.get('FLASK_CONFIG', 'default')

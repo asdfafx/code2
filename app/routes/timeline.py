@@ -1,6 +1,6 @@
 # 攻击行为时间线路由
 from flask import Blueprint, request, jsonify, session
-from app import db, csrf
+from app import csrf
 from app.models import LogEntry, LogImport
 from app.services.timeline import timeline_service
 from functools import wraps

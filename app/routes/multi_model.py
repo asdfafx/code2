@@ -3,7 +3,6 @@ from flask import Blueprint, request, jsonify, session
 from app import db, csrf
 from app.services.multi_model_llm import multi_model_service
 from app.models import LLMModel
-from app import db
 from functools import wraps
 
 bp = Blueprint('multi_model', __name__)
@@ -216,9 +215,6 @@ def test_model():
         model = LLMModel.query.get(data['model_id'])
         if not model:
             return jsonify({'error': '模型不存在'}), 404
-        
-        # 构建简单的测试提示词
-        test_prompt = "请回复OK"
         
         model_type = model.model_name.split('-')[0] if '-' in model.model_name else 'ollama'
         model_config = {

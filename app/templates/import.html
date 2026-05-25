@@ -43,9 +43,9 @@
                             <option value="sql_injection">💉 SQL 注入检测</option>
                             <option value="xss">⚠️ XSS 攻击检测</option>
                             <option value="directory_traversal">📁 目录遍历检测</option>
-                            <option value="stream">⚡ 流式规则分析</option>
+                            <option value="stream">📈 流式规则分析</option>
                             <option value="geo">🌍 地理分布分析</option>
-                            <option value="timeline">⏱️ 行为时间线分析</option>
+                            <option value="timeline">⏰ 行为时间线分析</option>
                         </select>
                         <div id="promptStructureInfo" style="margin-top: 10px; padding: 12px; background: #f0f7ff; border-radius: 6px; font-size: 12px; line-height: 1.6;"></div>
                     </div>
@@ -1047,7 +1047,7 @@
     
     // 切换保存 API Key 功能
     function toggleSaveApiKey() {
-        const checkbox = document.getElementById('saveApiKey');
+        const checkbox = document.getElemeentById('saveApiKey');
         console.log(`[API Key] 保存功能: ${checkbox.checked ? '启用' : '禁用'}`);
     }
     

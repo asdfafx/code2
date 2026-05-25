@@ -10,8 +10,8 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app import create_app, db
-from app.models import User, LogImport, LogEntry, AnalysisResult, LLMModel
-from datetime import datetime, timedelta
+from app.models import User, LogImport, LogEntry, AnalysisResult
+from datetime import datetime
 
 
 def create_test_data():

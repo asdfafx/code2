@@ -1,6 +1,6 @@
 # 告警通知路由
 from flask import Blueprint, request, jsonify, session
-from app import db, csrf
+from app import csrf
 from app.models import LogEntry, LogImport
 from app.services.alert_service import alert_service
 from functools import wraps

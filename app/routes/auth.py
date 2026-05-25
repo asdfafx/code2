@@ -1,11 +1,10 @@
 # 用户认证路由
-from flask import Blueprint, request, jsonify, session, redirect, url_for
+from flask import Blueprint, request, jsonify, session
 from datetime import datetime
-from app import db, login_manager, csrf
+from app import db, csrf
 from app.models import User
 from app.security import security
 from functools import wraps
-from flask_wtf.csrf import CSRFProtect
 
 bp = Blueprint('auth', __name__)
 

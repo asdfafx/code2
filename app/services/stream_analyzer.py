@@ -1,8 +1,7 @@
 # 实时流式分析服务
-import time
 import threading
 from collections import deque
-from datetime import datetime, timedelta
+from datetime import datetime
 from app.services.rule_filter import RuleFilter
 
 

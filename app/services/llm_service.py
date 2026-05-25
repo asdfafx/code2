@@ -12,7 +12,6 @@ LLM 分析服务 - 核心模块
 import json
 import re
 import requests
-from datetime import datetime
 from sqlalchemy import text as sa_text
 
 
@@ -299,7 +298,7 @@ class PromptTemplateManager:
 - 完整请求：{raw_request}
 
 【常见目录遍历手法】
-1. 经典遍历：../, ..\, ../
+1. 经典遍历：../, ..\\, ../
 2. URL 编码：%2e%2e%2f, %2e%2e/
 3. Unicode 编码：..%c0%af, ..%c1%9c
 4. 空字节绕过：..%00.txt
@@ -314,7 +313,7 @@ class PromptTemplateManager:
 - 敏感数据：.env, database.sql
 
 【检测要点】
-1. 检查路径穿越序列：../, ..\, ../
+1. 检查路径穿越序列：../, ..\\, ../
 2. 识别敏感文件路径
 3. 分析编码绕过技巧
 4. 评估攻击可行性
@@ -810,11 +809,6 @@ class LLMService:
             db.session.commit()
             
             print(f"[LLM Service] ✅ 分析结果已保存到数据库")
-            
-            # 获取刚插入的 result_id，然后设置 entry_id = result_id
-            result_id = db.session.execute(
-                sa_text("SELECT last_insert_rowid()")
-            ).fetchone()[0]
                     
         except Exception as save_error:
             print(f"[LLM Service] ❌ 保存失败: {str(save_error)}")
@@ -1001,7 +995,6 @@ class LLMService:
             'reason': f'LLM 返回格式异常，已使用默认分析结果。原始响应: {raw_text[:100]}',
             'confidence': 0.5
         }
-    
     def _ensure_required_fields(self, result):
         """确保必需字段存在"""
         required_fields = {
@@ -1068,99 +1061,3 @@ class LLMService:
             'is_fallback': True,
             'analysis_type': analysis_type
         }
-
-
-class RiskKeywordLibrary:
-    """风险关键词库"""
-    
-    # SQL 注入关键词
-    SQL_INJECTION_KEYWORDS = [
-        'select', 'union', 'insert', 'update', 'delete', 'drop', 'create', 'alter',
-        'exec', 'execute', 'script', 'eval', 'assert',
-        'or 1=1', 'or 1=2', "or '1'='1", 'and 1=1', 'and 1=2',
-        'union select', 'union all', 'union+select',
-        '--', '/*', '*/', ';--', '1;drop',
-        'sleep(', 'benchmark(', 'waitfor', 'delay',
-        'concat(', 'substring(', 'ascii(', 'char(',
-        '0x', '0x73', '0x65', '0x6c',
-        'information_schema', 'mysql', 'postgres', 'mssql'
-    ]
-    
-    # XSS 关键词
-    XSS_KEYWORDS = [
-        '<script', '</script>', '<script>',
-        'javascript:', 'vbscript:', 'data:',
-        'onerror=', 'onclick=', 'onload=', 'onmouseover=',
-        'onfocus=', 'onblur=', 'onchange=', 'onsubmit=',
-        'alert(', 'prompt(', 'confirm(',
-        '<img', '<iframe', '<object', '<embed', '<svg',
-        '<body', '<input', '<form', '<marquee',
-        'innerHTML', 'outerHTML', 'document.cookie',
-        '%3cscript', '%3cscript', '&#60;script'
-    ]
-    
-    # 目录遍历关键词
-    DIRECTORY_TRAVERSAL_KEYWORDS = [
-        '../', '..\\', '..%2f', '..%5c',
-        '%2e%2e', '....//', '.....///',
-        '/etc/passwd', '/etc/shadow', '/etc/hosts',
-        'c:\\windows', 'c:\\boot.ini',
-        'config.php', 'wp-config', 'web.config',
-        '.htaccess', '.env', 'database.sql',
-        'proc/self', '/var/log', 'access.log',
-        '../.\\', '..;/', '%00', 'null byte'
-    ]
-    
-    # 命令注入关键词
-    COMMAND_INJECTION_KEYWORDS = [
-        '|', '||', '&', '&&', ';', '`', '$(',
-        'wget', 'curl', 'nc', 'netcat',
-        'chmod', 'chown', 'rm -rf',
-        '/bin/sh', '/bin/bash', 'cmd.exe'
-    ]
-    
-    @classmethod
-    def get_all_keywords(cls):
-        """获取所有关键词"""
-        return (cls.SQL_INJECTION_KEYWORDS + 
-                cls.XSS_KEYWORDS + 
-                cls.DIRECTORY_TRAVERSAL_KEYWORDS + 
-                cls.COMMAND_INJECTION_KEYWORDS)
-    
-    @classmethod
-    def detect(cls, text):
-        """
-        检测文本中的风险关键词
-        
-        Returns:
-            dict: {'keywords': [], 'risk_score': int}
-        """
-        if not text:
-            return {'keywords': [], 'risk_score': 0}
-        
-        text_lower = text.lower()
-        matched = []
-        
-        for keyword in cls.get_all_keywords():
-            if keyword.lower() in text_lower:
-                matched.append(keyword)
-        
-        # 计算风险评分
-        risk_score = len(matched) * 10
-        risk_score = min(risk_score, 100)  # 最高100分
-        
-        return {
-            'keywords': matched,
-            'risk_score': risk_score
-        }
-    
-    @classmethod
-    def get_category_keywords(cls, category):
-        """获取指定类别的关键词"""
-        category_map = {
-            'sql_injection': cls.SQL_INJECTION_KEYWORDS,
-            'xss': cls.XSS_KEYWORDS,
-            'directory_traversal': cls.DIRECTORY_TRAVERSAL_KEYWORDS,
-            'command_injection': cls.COMMAND_INJECTION_KEYWORDS
-        }
-        return category_map.get(category, cls.get_all_keywords())

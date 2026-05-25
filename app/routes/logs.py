@@ -307,7 +307,6 @@ def _run_pre_screen_for_import(import_id):
         risk_score = analysis.get('risk_score', 0)
         matched_keywords = analysis.get('matched_keywords', [])
         prompt_templates = analysis.get('prompt_templates', [])
-        attack_types = analysis.get('attack_types', [])
 
         entry.initial_risk_score = risk_score
         entry.risk_keywords = ','.join(matched_keywords)
@@ -399,7 +398,6 @@ def analyze_with_custom_config():
     try:
         import requests
         import json
-        import re
         from app.services.llm_service import PromptTemplateManager
         from app.services.rule_filter import RuleFilter
         
@@ -411,7 +409,6 @@ def analyze_with_custom_config():
         api_endpoint = data.get('api_endpoint', 'http://localhost:11434')
         model_name = data.get('model_name', 'qwen:7b')
         prompt_template = data.get('prompt_template', 'general')
-        secret_key = data.get('secret_key', '')
         import_id = data.get('import_id')
         log_content = data.get('log_content', '')
         
@@ -621,6 +618,9 @@ def get_last_import():
 def _parse_llm_analysis(text):
     """解析LLM分析响应"""
     try:
+        import json
+        import re
+
         # 尝试从文本中提取JSON
         json_patterns = [
             r'```json\s*(.*?)\s*```',
@@ -697,7 +697,6 @@ def test_llm_connection():
         api_key = data.get('api_key', '')
         api_endpoint = data.get('api_endpoint', 'http://localhost:11434')
         model_name = data.get('model_name', 'qwen:7b')
-        secret_key = data.get('secret_key', '')
         
         test_prompt = "请回复OK"
         
@@ -758,9 +757,6 @@ def llm_analyze():
     - directory_traversal: 目录遍历检测
     """
     try:
-        import requests
-        import json
-        import re
         from app.services.llm_service import LLMService
         
         data = request.get_json()

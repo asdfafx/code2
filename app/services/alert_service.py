@@ -105,6 +105,7 @@ class AlertService:
         # 这里需要使用阿里云SDK
         # 由于这是一个示例，我们只返回True表示成功
         # 在实际部署时，需要安装 aliyun-python-sdk-core 和 aliyun-python-sdk-dysmsapi
+        message = template_param.get('message', '')
         print(f"模拟发送短信到 {phone}: {message}")
         return True
     

@@ -3,7 +3,7 @@ import io
 import csv
 import json
 from flask import Blueprint, request, jsonify, session, send_file
-from app import db, csrf
+from app import csrf
 from app.models import AnalysisResult, LogEntry, LogImport
 from functools import wraps
 from datetime import datetime

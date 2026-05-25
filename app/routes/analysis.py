@@ -1,10 +1,8 @@
 # 分析结果路由
 from flask import Blueprint, request, jsonify, session, current_app
-from sqlalchemy import text as sa_text
 from app import db, csrf
 from app.models import LogEntry, AnalysisResult, LogImport
 from app.services.llm_service import LLMService
-from app.services.rule_filter import RuleFilter
 from app.security import security
 from functools import wraps
 
@@ -62,9 +60,6 @@ def start_analysis():
             timeout=current_app.config['LLM_TIMEOUT'],
             api_key=current_app.config.get('DEEPSEEK_API_KEY') or current_app.config.get('DASHSCOPE_API_KEY')
         )
-        
-        # 初始化规则过滤器
-        rule_filter = RuleFilter()
         
         analyzed_count = 0
         results = []
@@ -124,7 +119,7 @@ def start_analysis():
         # 提交标记为已分析
         try:
             db.session.commit()
-        except Exception as commit_error:
+        except Exception:
             db.session.rollback()
         
         return jsonify({

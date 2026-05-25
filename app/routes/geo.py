@@ -1,7 +1,7 @@
 # IP 地理位置分析路由
 from flask import Blueprint, request, jsonify, session
-from app import db, csrf
-from app.models import LogEntry, LogImport, AnalysisResult
+from app import csrf
+from app.models import LogEntry, LogImport
 from app.services.ip_geo import ip_geo_service
 from functools import wraps
 

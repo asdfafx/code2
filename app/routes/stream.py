@@ -1,6 +1,6 @@
 # 实时流式分析路由
 from flask import Blueprint, request, jsonify, session
-from app import db, csrf
+from app import csrf
 from app.services.stream_analyzer import stream_analyzer
 from app.models import LogEntry, LogImport
 from functools import wraps

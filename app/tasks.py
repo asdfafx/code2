@@ -1,6 +1,5 @@
 # Celery 异步任务配置
 from celery import Celery
-from flask import current_app
 
 
 def make_celery(app=None):
@@ -93,9 +92,6 @@ def analyze_log_entry(self, log_data, risk_keywords, config, filename=None):
 @celery.task(bind=True)
 def batch_analyze_logs(self, log_entries, config):
     """批量异步分析日志"""
-    from app.services.llm_service import LLMService
-    from app import db
-    from app.models import AnalysisResult
     
     total = len(log_entries)
     completed = 0
@@ -135,7 +131,7 @@ def batch_analyze_logs(self, log_entries, config):
                 meta={'current': completed, 'total': total}
             )
             
-        except Exception as e:
+        except Exception:
             failed += 1
             continue
     

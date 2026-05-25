@@ -1,7 +1,7 @@
 # 日志解析服务
 import re
 from datetime import datetime
-from app.models import LogEntry, LogImport
+from app.models import LogEntry
 
 
 class LogParser:
@@ -51,7 +51,7 @@ class LogParser:
                 return self._parse_nginx(line)
             else:
                 return self._parse_custom(line)
-        except Exception as e:
+        except Exception:
             self.failed_count += 1
             return None
     
