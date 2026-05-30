@@ -239,7 +239,7 @@
                 <div class="export-format-card" style="border: 2px solid #667eea; background: #f5f6ff;">
                     <h4>📊 CSV 格式</h4>
                     <p>导出为 CSV 表格文件，适合在 Excel 等工具中继续分析。</p>
-                    <button class="btn btn-primary export-button" onclick="exportSelected('csv')" style="width: 100%;">
+                    <button type="button" class="btn btn-primary export-button" onclick="exportSelected('csv')" style="width: 100%;">
                         下载 CSV
                     </button>
                 </div>
@@ -247,7 +247,7 @@
                 <div class="export-format-card" style="border: 2px solid #4caf50; background: #f0fff0;">
                     <h4>📋 HTML 报告</h4>
                     <p>生成 HTML 分析报告，包含统计摘要和分析明细。</p>
-                    <button class="btn btn-success export-button" onclick="exportSelected('html')" style="width: 100%;">
+                    <button type="button" class="btn btn-success export-button" onclick="exportSelected('html')" style="width: 100%;">
                         下载 HTML
                     </button>
                 </div>
@@ -255,7 +255,7 @@
                 <div class="export-format-card" style="border: 2px solid #ff9800; background: #fff8f0;">
                     <h4>📄 JSON 格式</h4>
                     <p>导出原始 JSON 数据，适合程序处理和系统集成。</p>
-                    <button class="btn btn-warning export-button" onclick="exportSelected('json')" style="width: 100%; background: #ff9800; color: white;">
+                    <button type="button" class="btn btn-warning export-button" onclick="exportSelected('json')" style="width: 100%; background: #ff9800; color: white;">
                         下载 JSON
                     </button>
                 </div>
@@ -402,43 +402,46 @@
 
         isExporting = true;
         syncExportButtons();
-        showMessage(`正在生成 ${selectedImports.length} 个 ${format.toUpperCase()} 文件...`, 'info');
 
         const failures = [];
         let successCount = 0;
 
-        for (const importRecord of selectedImports) {
-            try {
-                const response = await fetch(`${API_BASE}/export/${format}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    credentials: 'include',
-                    body: JSON.stringify({ import_id: importRecord.import_id })
-                });
+        try {
+            showMessage(`正在生成 ${selectedImports.length} 个 ${format.toUpperCase()} 文件...`, 'info');
 
-                if (!response.ok) {
-                    const error = await response.json().catch(() => ({}));
-                    throw new Error(error.error || '导出失败');
+            for (const importRecord of selectedImports) {
+                try {
+                    const response = await fetch(`${API_BASE}/export/${format}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        credentials: 'include',
+                        body: JSON.stringify({ import_id: importRecord.import_id })
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json().catch(() => ({}));
+                        throw new Error(error.error || '导出失败');
+                    }
+
+                    const blob = await response.blob();
+                    const filename = getDownloadFilename(
+                        response,
+                        importRecord,
+                        format
+                    );
+                    triggerDownload(blob, filename);
+                    successCount += 1;
+                } catch (error) {
+                    console.error('导出失败:', importRecord, error);
+                    failures.push(`${importRecord.filename || importRecord.import_id}: ${error.message}`);
                 }
-
-                const blob = await response.blob();
-                const filename = getDownloadFilename(
-                    response,
-                    importRecord,
-                    format
-                );
-                triggerDownload(blob, filename);
-                successCount += 1;
-            } catch (error) {
-                console.error('导出失败:', importRecord, error);
-                failures.push(`${importRecord.filename || importRecord.import_id}: ${error.message}`);
             }
+        } finally {
+            isExporting = false;
+            syncExportButtons();
         }
-
-        isExporting = false;
-        syncExportButtons();
 
         if (failures.length) {
             showMessage(`已成功导出 ${successCount} 个，失败 ${failures.length} 个`, 'warning');
@@ -454,8 +457,10 @@
         a.download = filename;
         document.body.appendChild(a);
         a.click();
-        window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
+        setTimeout(() => {
+            window.URL.revokeObjectURL(url);
+        }, 0);
     }
 
     function getDownloadFilename(response, importRecord, format) {
