@@ -4,6 +4,7 @@ import io
 import csv
 import json
 from flask import Blueprint, request, jsonify, session, send_file
+from werkzeug.utils import secure_filename
 from app import csrf
 from app.models import AnalysisResult, LogEntry, LogImport
 from functools import wraps
@@ -25,6 +26,27 @@ def login_required(f):
     return decorated_function
 
 
+def _get_export_import(import_id):
+    """Resolve the requested import batch for the current user."""
+    if import_id:
+        return LogImport.query.filter_by(
+            import_id=import_id,
+            user_id=session['user_id']
+        ).first()
+
+    return LogImport.query.filter_by(
+        user_id=session['user_id']
+    ).order_by(LogImport.import_time.desc()).first()
+
+
+def _build_export_filename(log_import, extension):
+    """Build a distinct filename for batch downloads."""
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    source_name = secure_filename(log_import.filename or 'import')
+    source_stem = source_name.rsplit('.', 1)[0] if source_name else 'import'
+    return f'analysis_report_{source_stem}_{log_import.import_id}_{timestamp}.{extension}'
+
+
 @bp.route('/csv', methods=['POST'])
 @login_required
 def export_csv():
@@ -34,15 +56,10 @@ def export_csv():
         import_id = data.get('import_id')
         
         # 如果没有提供 import_id，则默认导出当前用户最后一次导入的检测记录。
-        if not import_id:
-            last_import = LogImport.query.filter_by(
-                user_id=session['user_id']
-            ).order_by(LogImport.import_time.desc()).first()
-            
-            if not last_import:
-                return jsonify({'error': '没有找到检测记录'}), 404
-            
-            import_id = last_import.import_id
+        log_import = _get_export_import(import_id)
+        if not log_import:
+            return jsonify({'error': '没有找到检测记录'}), 404
+        import_id = log_import.import_id
         
         # 构建查询
         query = AnalysisResult.query.join(LogEntry).join(LogImport).filter(
@@ -89,8 +106,7 @@ def export_csv():
             ])
         
         # 生成文件名
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f'analysis_report_{timestamp}.csv'
+        filename = _build_export_filename(log_import, 'csv')
         
         # 创建 BytesIO 用于发送
         bytes_output = io.BytesIO()
@@ -117,15 +133,10 @@ def export_html():
         import_id = data.get('import_id')
         
         # 如果没有提供 import_id，则获取最后一次导入的记录
-        if not import_id:
-            last_import = LogImport.query.filter_by(
-                user_id=session['user_id']
-            ).order_by(LogImport.import_time.desc()).first()
-            
-            if not last_import:
-                return jsonify({'error': '没有找到检测记录'}), 404
-            
-            import_id = last_import.import_id
+        log_import = _get_export_import(import_id)
+        if not log_import:
+            return jsonify({'error': '没有找到检测记录'}), 404
+        import_id = log_import.import_id
         
         # 获取统计数据
         query = AnalysisResult.query.join(LogEntry).join(LogImport).filter(
@@ -248,8 +259,7 @@ def export_html():
 """
         
         # 生成文件名
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f'analysis_report_{timestamp}.html'
+        filename = _build_export_filename(log_import, 'html')
         
         return send_file(
             io.BytesIO(html_content.encode('utf-8')),
@@ -271,15 +281,10 @@ def export_json():
         import_id = data.get('import_id')
         
         # 如果没有提供 import_id，则获取最后一次导入的记录
-        if not import_id:
-            last_import = LogImport.query.filter_by(
-                user_id=session['user_id']
-            ).order_by(LogImport.import_time.desc()).first()
-            
-            if not last_import:
-                return jsonify({'error': '没有找到检测记录'}), 404
-            
-            import_id = last_import.import_id
+        log_import = _get_export_import(import_id)
+        if not log_import:
+            return jsonify({'error': '没有找到检测记录'}), 404
+        import_id = log_import.import_id
         
         # 构建查询
         query = AnalysisResult.query.join(LogEntry).join(LogImport).filter(
@@ -298,7 +303,6 @@ def export_json():
         }
         
         # 获取导入信息
-        log_import = LogImport.query.get(import_id)
         if log_import:
             export_data['import_info'] = {
                 'filename': log_import.filename,
@@ -325,8 +329,7 @@ def export_json():
             })
         
         # 生成文件名
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f'analysis_report_{timestamp}.json'
+        filename = _build_export_filename(log_import, 'json')
         
         # 创建 JSON 文件
         json_content = json.dumps(export_data, ensure_ascii=False, indent=2)

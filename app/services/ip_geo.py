@@ -5,6 +5,7 @@
 减少重复 IP 查询带来的网络开销。
 """
 import requests
+import ipaddress
 from functools import lru_cache
 
 
@@ -39,17 +40,9 @@ class IPGeoService:
         if ip_address in self.cache:
             return self.cache[ip_address]
         
-        # 内网地址不需要访问外部 API，直接标记为本地网络。
-        if ip_address.startswith(('127.', '192.168.', '10.', '172.')):
-            result = {
-                'ip': ip_address,
-                'country': '本地网络',
-                'region': '内网',
-                'city': '局域网',
-                'latitude': 0,
-                'longitude': 0,
-                'is_private': True
-            }
+        special_location = self._classify_special_ip(ip_address)
+        if special_location:
+            result = special_location
             self.cache[ip_address] = result
             return result
         
@@ -82,6 +75,51 @@ class IPGeoService:
         
         self.cache[ip_address] = result
         return result
+
+    def _classify_special_ip(self, ip_address):
+        """精确识别不应发起公网地理查询的非公网地址。"""
+        try:
+            ip = ipaddress.ip_address(ip_address)
+        except ValueError:
+            return None
+
+        if ip.is_loopback:
+            category = '回环地址'
+            country = '本地网络'
+            city = '本机'
+        elif ip.is_link_local:
+            category = '链路本地地址'
+            country = '保留地址'
+            city = '链路本地'
+        elif ip.is_multicast:
+            category = '组播地址'
+            country = '保留地址'
+            city = '非公网'
+        elif ip.is_reserved:
+            category = '保留地址'
+            country = '保留地址'
+            city = '非公网'
+        elif ip.is_unspecified:
+            category = '未指定地址'
+            country = '保留地址'
+            city = '非公网'
+        elif ip.is_private:
+            category = '私有地址'
+            country = '本地网络'
+            city = '内网'
+        else:
+            return None
+
+        return {
+            'ip': ip_address,
+            'country': country,
+            'region': category,
+            'city': city,
+            'latitude': 0,
+            'longitude': 0,
+            'is_private': True,
+            'source': 'ipaddress'
+        }
     
     def _query_baidu_api(self, ip_address):
         """使用百度 API 查询（对中国 IP 更准确）"""

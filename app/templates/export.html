@@ -2,60 +2,272 @@
 
 {% block title %}导出报告 - 日志分析系统{% endblock %}
 
+{% block extra_css %}
+<style>
+    .export-page {
+        padding: 30px;
+    }
+
+    .recent-export-panel {
+        margin-bottom: 30px;
+        padding: 20px;
+        background: #f7f9ff;
+        border: 1px solid #dfe5ff;
+        border-radius: 8px;
+        text-align: left;
+    }
+
+    .recent-export-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 14px;
+    }
+
+    .recent-export-header h4 {
+        margin: 0;
+        color: #667eea;
+    }
+
+    .select-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .link-button {
+        border: none;
+        background: transparent;
+        color: #667eea;
+        cursor: pointer;
+        font-size: 13px;
+        padding: 4px 6px;
+    }
+
+    .link-button:hover {
+        text-decoration: underline;
+    }
+
+    .recent-import-dropdown {
+        position: relative;
+    }
+
+    .recent-import-dropdown-button {
+        width: 100%;
+        min-height: 42px;
+        padding: 10px 12px;
+        border: 1px solid #cfd6f6;
+        border-radius: 6px;
+        background: white;
+        color: #333;
+        font-size: 14px;
+        text-align: left;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .recent-import-dropdown-button:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.14);
+    }
+
+    .dropdown-arrow {
+        color: #667eea;
+        font-size: 12px;
+        flex: 0 0 auto;
+    }
+
+    .recent-import-dropdown-menu {
+        position: absolute;
+        z-index: 20;
+        top: calc(100% + 6px);
+        left: 0;
+        right: 0;
+        display: none;
+        max-height: 260px;
+        overflow-y: auto;
+        padding: 8px;
+        background: white;
+        border: 1px solid #cfd6f6;
+        border-radius: 6px;
+        box-shadow: 0 8px 24px rgba(30, 42, 80, 0.14);
+    }
+
+    .recent-import-dropdown.open .recent-import-dropdown-menu {
+        display: grid;
+        gap: 8px;
+    }
+
+    .recent-import-option {
+        display: grid;
+        grid-template-columns: 24px minmax(0, 1fr);
+        gap: 10px;
+        align-items: flex-start;
+        padding: 9px;
+        border-radius: 5px;
+        cursor: pointer;
+    }
+
+    .recent-import-option:hover {
+        background: #f5f6ff;
+    }
+
+    .recent-import-option input {
+        margin-top: 3px;
+    }
+
+    .import-title {
+        display: block;
+        font-weight: bold;
+        color: #333;
+        word-break: break-word;
+    }
+
+    .import-meta {
+        display: block;
+        margin-top: 4px;
+        color: #666;
+        font-size: 12px;
+        line-height: 1.5;
+    }
+
+    .select-hint {
+        margin-top: 8px;
+        color: #666;
+        font-size: 13px;
+    }
+
+    .empty-state {
+        padding: 18px;
+        color: #666;
+        background: white;
+        border: 1px dashed #c9cfe8;
+        border-radius: 6px;
+    }
+
+    .export-format-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 20px;
+        max-width: 900px;
+        margin: 0 auto;
+    }
+
+    .export-format-card {
+        padding: 24px;
+        border-radius: 8px;
+    }
+
+    .export-format-card h4 {
+        margin-bottom: 15px;
+    }
+
+    .export-format-card p {
+        color: #666;
+        margin-bottom: 20px;
+        font-size: 14px;
+        line-height: 1.6;
+    }
+
+    .export-help {
+        margin-top: 30px;
+        padding: 20px;
+        background: #f9f9f9;
+        border-radius: 6px;
+        text-align: left;
+    }
+
+    .export-help h4 {
+        margin-bottom: 10px;
+    }
+
+    .export-help ul {
+        color: #666;
+        line-height: 1.8;
+        padding-left: 20px;
+    }
+
+    .btn[disabled] {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="card">
     <div class="card-header">📤 导出报告</div>
     <div class="card-body">
-        <div style="padding: 30px; text-align: center;">
-            <!-- 最后一次检测信息 -->
-            <div id="lastImportInfo" style="margin-bottom: 30px; padding: 20px; background: #f0f8ff; border-radius: 10px; text-align: left; display: none;">
-                <h4 style="margin-bottom: 15px; color: #667eea;">📋 最后一次检测信息</h4>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
-                    <div>
-                        <strong>文件名：</strong><span id="infoFilename">-</span>
+        <div class="export-page">
+            <div id="recentImportPanel" class="recent-export-panel">
+                <div class="recent-export-header">
+                    <h4>📁 最近五次检测结果</h4>
+                    <div class="select-actions">
+                        <button type="button" class="link-button" onclick="selectAllRecentImports()">全选</button>
+                        <button type="button" class="link-button" onclick="clearRecentImportSelection()">清空</button>
                     </div>
-                    <div>
-                        <strong>导入时间：</strong><span id="infoImportTime">-</span>
-                    </div>
-                    <div>
-                        <strong>总记录数：</strong><span id="infoTotalLines">-</span>
-                    </div>
-                    <div>
-                        <strong>已分析：</strong><span id="infoParsedLines">-</span>
-                    </div>
+                </div>
+                <div id="recentImportEmpty" class="empty-state">正在加载检测记录...</div>
+                <div id="recentImportDropdown" class="recent-import-dropdown" style="display: none;">
+                    <button
+                        id="recentImportDropdownButton"
+                        class="recent-import-dropdown-button"
+                        type="button"
+                        onclick="toggleRecentImportDropdown()"
+                    >
+                        <span id="recentImportDropdownLabel">请选择检测结果</span>
+                        <span class="dropdown-arrow">▼</span>
+                    </button>
+                    <div id="recentImportDropdownMenu" class="recent-import-dropdown-menu"></div>
+                </div>
+                <div id="recentImportHint" class="select-hint" style="display: none;">
+                    可在下拉菜单中勾选一个或多个检测结果；多选时会分别下载多个文件。
                 </div>
             </div>
-            
-            <h3 style="margin-bottom: 20px;">选择导出格式</h3>
-            <p style="color: #666; margin-bottom: 30px;">将导出最后一次检测的分析结果</p>
-            
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; max-width: 800px; margin: 0 auto;">
-                <div style="padding: 30px; border: 2px solid #667eea; border-radius: 10px; background: #f5f6ff;">
-                    <h4 style="margin-bottom: 15px;">📊 CSV 格式</h4>
-                    <p style="color: #666; margin-bottom: 20px; font-size: 14px;">导出为 CSV 表格文件，适合数据分析和处理</p>
-                    <button class="btn btn-primary" onclick="exportCSV()" style="width: 100%;">下载 CSV</button>
+
+            <h3 style="margin-bottom: 12px; text-align: center;">选择导出格式</h3>
+            <p style="color: #666; margin-bottom: 30px; text-align: center;">
+                已选检测结果会分别下载为独立文件
+            </p>
+
+            <div class="export-format-grid">
+                <div class="export-format-card" style="border: 2px solid #667eea; background: #f5f6ff;">
+                    <h4>📊 CSV 格式</h4>
+                    <p>导出为 CSV 表格文件，适合在 Excel 等工具中继续分析。</p>
+                    <button class="btn btn-primary export-button" onclick="exportSelected('csv')" style="width: 100%;">
+                        下载 CSV
+                    </button>
                 </div>
-                
-                <div style="padding: 30px; border: 2px solid #4caf50; border-radius: 10px; background: #f0fff0;">
-                    <h4 style="margin-bottom: 15px;">📄 HTML 报告</h4>
-                    <p style="color: #666; margin-bottom: 20px; font-size: 14px;">生成完整的 HTML 分析报告，包含图表和统计数据</p>
-                    <button class="btn btn-success" onclick="exportHTML()" style="width: 100%;">下载 HTML</button>
+
+                <div class="export-format-card" style="border: 2px solid #4caf50; background: #f0fff0;">
+                    <h4>📋 HTML 报告</h4>
+                    <p>生成 HTML 分析报告，包含统计摘要和分析明细。</p>
+                    <button class="btn btn-success export-button" onclick="exportSelected('html')" style="width: 100%;">
+                        下载 HTML
+                    </button>
                 </div>
-                
-                <div style="padding: 30px; border: 2px solid #ff9800; border-radius: 10px; background: #fff8f0;">
-                    <h4 style="margin-bottom: 15px;">📑 JSON 格式</h4>
-                    <p style="color: #666; margin-bottom: 20px; font-size: 14px;">导出原始 JSON 数据，适合程序处理和集成</p>
-                    <button class="btn btn-warning" onclick="exportJSON()" style="width: 100%; background: #ff9800; color: white;">下载 JSON</button>
+
+                <div class="export-format-card" style="border: 2px solid #ff9800; background: #fff8f0;">
+                    <h4>📄 JSON 格式</h4>
+                    <p>导出原始 JSON 数据，适合程序处理和系统集成。</p>
+                    <button class="btn btn-warning export-button" onclick="exportSelected('json')" style="width: 100%; background: #ff9800; color: white;">
+                        下载 JSON
+                    </button>
                 </div>
             </div>
-            
-            <div style="margin-top: 30px; padding: 20px; background: #f9f9f9; border-radius: 5px; text-align: left;">
-                <h4 style="margin-bottom: 10px;">📝 导出说明</h4>
-                <ul style="color: #666; line-height: 1.8;">
-                    <li>导出将包含最后一次检测的所有分析结果</li>
-                    <li>CSV 格式适合在 Excel 等工具中打开</li>
-                    <li>HTML 报告包含可视化图表，可直接在浏览器中查看</li>
-                    <li>JSON 格式适合与其他系统集成</li>
+
+            <div class="export-help">
+                <h4>📝 导出说明</h4>
+                <ul>
+                    <li>页面展示当前账号最近五次检测结果。</li>
+                    <li>可以选择一个或多个检测结果进行导出。</li>
+                    <li>多选时会为每个检测结果分别下载一个文件。</li>
+                    <li>CSV 适合表格分析，HTML 适合浏览查看，JSON 适合系统对接。</li>
                 </ul>
             </div>
         </div>
@@ -65,151 +277,207 @@
 
 {% block extra_js %}
 <script>
-    // 页面加载时获取最后一次检测信息
+    let recentImports = [];
+    let isExporting = false;
+
     document.addEventListener('DOMContentLoaded', async function() {
-        await loadLastImportInfo();
+        await loadRecentImports();
     });
 
-    // 获取最后一次检测信息
-    async function loadLastImportInfo() {
+    async function loadRecentImports() {
         try {
-            const response = await fetch(`${API_BASE}/logs/last`, {
+            const response = await fetch(`${API_BASE}/logs/list?per_page=5`, {
                 credentials: 'include'
             });
-            
-            if (response.ok) {
-                const data = await response.json();
-                displayLastImportInfo(data);
-            } else if (response.status === 404) {
-                // 没有检测记录
-                document.getElementById('lastImportInfo').innerHTML = `
-                    <h4 style="margin-bottom: 15px; color: #f44336;">⚠️ 暂无检测记录</h4>
-                    <p style="color: #666;">请先导入日志文件并进行分析</p>
-                `;
-                document.getElementById('lastImportInfo').style.display = 'block';
-                
-                // 禁用导出按钮
-                const buttons = document.querySelectorAll('.card-body button');
-                buttons.forEach(btn => {
-                    btn.disabled = true;
-                    btn.style.opacity = '0.5';
-                    btn.style.cursor = 'not-allowed';
+
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}));
+                throw new Error(error.error || '获取检测记录失败');
+            }
+
+            const data = await response.json();
+            recentImports = data.imports || [];
+            renderRecentImports();
+        } catch (error) {
+            console.error('获取最近检测记录失败:', error);
+            recentImports = [];
+            showRecentImportEmpty('获取检测记录失败，请稍后重试。');
+            setExportButtonsDisabled(true);
+            showMessage(error.message || '获取检测记录失败', 'error');
+        }
+    }
+
+    function renderRecentImports() {
+        if (!recentImports.length) {
+            showRecentImportEmpty('暂无检测记录，请先导入日志并完成分析。');
+            setExportButtonsDisabled(true);
+            return;
+        }
+
+        renderRecentImportOptions();
+        document.getElementById('recentImportDropdown').style.display = 'block';
+        document.getElementById('recentImportEmpty').style.display = 'none';
+        document.getElementById('recentImportHint').style.display = 'block';
+
+        syncExportButtons();
+    }
+
+    function renderRecentImportOptions() {
+        const menu = document.getElementById('recentImportDropdownMenu');
+        menu.innerHTML = recentImports.map((item, index) => `
+            <label class="recent-import-option">
+                <input
+                    type="checkbox"
+                    value="${item.import_id}"
+                    ${index === 0 ? 'checked' : ''}
+                    onchange="syncExportButtons()"
+                >
+                <span>
+                    <span class="import-title">${escapeHtml(item.filename || '未命名检测')}</span>
+                    <span class="import-meta">
+                        ${escapeHtml(item.import_time || '-')} | 总记录 ${item.total_lines || 0} | 已解析 ${item.parsed_lines || 0}
+                    </span>
+                </span>
+            </label>
+        `).join('');
+    }
+
+    function getSelectedImports() {
+        const selectedIds = new Set(
+            Array.from(document.querySelectorAll('#recentImportDropdownMenu input:checked'))
+                .map(input => Number(input.value))
+        );
+        return recentImports.filter(item => selectedIds.has(Number(item.import_id)));
+    }
+
+    function selectAllRecentImports() {
+        document.querySelectorAll('#recentImportDropdownMenu input').forEach(input => {
+            input.checked = true;
+        });
+        syncExportButtons();
+    }
+
+    function clearRecentImportSelection() {
+        document.querySelectorAll('#recentImportDropdownMenu input').forEach(input => {
+            input.checked = false;
+        });
+        syncExportButtons();
+    }
+
+    function syncExportButtons() {
+        const selectedImports = getSelectedImports();
+        const label = document.getElementById('recentImportDropdownLabel');
+        if (label) {
+            label.textContent = selectedImports.length
+                ? `已选择 ${selectedImports.length} 个检测结果`
+                : '请选择检测结果';
+        }
+        setExportButtonsDisabled(isExporting || selectedImports.length === 0);
+    }
+
+    function setExportButtonsDisabled(disabled) {
+        document.querySelectorAll('.export-button').forEach(button => {
+            button.disabled = disabled;
+        });
+    }
+
+    function showRecentImportEmpty(message) {
+        const empty = document.getElementById('recentImportEmpty');
+        empty.textContent = message;
+        empty.style.display = 'block';
+        document.getElementById('recentImportDropdown').style.display = 'none';
+        document.getElementById('recentImportHint').style.display = 'none';
+    }
+
+    function toggleRecentImportDropdown() {
+        document.getElementById('recentImportDropdown').classList.toggle('open');
+    }
+
+    async function exportSelected(format) {
+        const selectedImports = getSelectedImports();
+        if (!selectedImports.length) {
+            showMessage('请至少选择一条检测结果', 'warning');
+            return;
+        }
+
+        isExporting = true;
+        syncExportButtons();
+        showMessage(`正在生成 ${selectedImports.length} 个 ${format.toUpperCase()} 文件...`, 'info');
+
+        const failures = [];
+        let successCount = 0;
+
+        for (const importRecord of selectedImports) {
+            try {
+                const response = await fetch(`${API_BASE}/export/${format}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({ import_id: importRecord.import_id })
                 });
-            }
-        } catch (error) {
-            console.error('获取最后一次检测信息失败:', error);
-        }
-    }
 
-    // 显示最后一次检测信息
-    function displayLastImportInfo(data) {
-        document.getElementById('infoFilename').textContent = data.filename || '-';
-        document.getElementById('infoImportTime').textContent = data.import_time || '-';
-        document.getElementById('infoTotalLines').textContent = data.total_lines || '0';
-        document.getElementById('infoParsedLines').textContent = data.parsed_lines || '0';
-        document.getElementById('lastImportInfo').style.display = 'block';
-    }
+                if (!response.ok) {
+                    const error = await response.json().catch(() => ({}));
+                    throw new Error(error.error || '导出失败');
+                }
 
-    // 导出 CSV
-    async function exportCSV() {
-        try {
-            showMessage('正在生成 CSV 文件...', 'info');
-            const response = await fetch(`${API_BASE}/export/csv`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                credentials: 'include',
-                body: JSON.stringify({})
-            });
-            
-            if (response.ok) {
                 const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `analysis_report_${new Date().getTime()}.csv`;
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-                showMessage('CSV 文件下载成功', 'success');
-            } else {
-                const error = await response.json();
-                showMessage(error.error || '导出失败', 'error');
+                const filename = getDownloadFilename(
+                    response,
+                    importRecord,
+                    format
+                );
+                triggerDownload(blob, filename);
+                successCount += 1;
+            } catch (error) {
+                console.error('导出失败:', importRecord, error);
+                failures.push(`${importRecord.filename || importRecord.import_id}: ${error.message}`);
             }
-        } catch (error) {
-            console.error('导出失败:', error);
-            showMessage('导出失败', 'error');
+        }
+
+        isExporting = false;
+        syncExportButtons();
+
+        if (failures.length) {
+            showMessage(`已成功导出 ${successCount} 个，失败 ${failures.length} 个`, 'warning');
+        } else {
+            showMessage(`已成功导出 ${successCount} 个文件`, 'success');
         }
     }
 
-    // 导出 HTML
-    async function exportHTML() {
-        try {
-            showMessage('正在生成 HTML 报告...', 'info');
-            const response = await fetch(`${API_BASE}/export/html`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                credentials: 'include',
-                body: JSON.stringify({})
-            });
-            
-            if (response.ok) {
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `analysis_report_${new Date().getTime()}.html`;
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-                showMessage('HTML 报告下载成功', 'success');
-            } else {
-                const error = await response.json();
-                showMessage(error.error || '导出失败', 'error');
-            }
-        } catch (error) {
-            console.error('导出失败:', error);
-            showMessage('导出失败', 'error');
-        }
+    function triggerDownload(blob, filename) {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
     }
 
-    // 导出 JSON
-    async function exportJSON() {
-        try {
-            showMessage('正在生成 JSON 文件...', 'info');
-            const response = await fetch(`${API_BASE}/export/json`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                credentials: 'include',
-                body: JSON.stringify({})
-            });
-            
-            if (response.ok) {
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `analysis_report_${new Date().getTime()}.json`;
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-                showMessage('JSON 文件下载成功', 'success');
-            } else {
-                const error = await response.json();
-                showMessage(error.error || '导出失败', 'error');
-            }
-        } catch (error) {
-            console.error('导出失败:', error);
-            showMessage('导出失败', 'error');
+    function getDownloadFilename(response, importRecord, format) {
+        const disposition = response.headers.get('Content-Disposition') || '';
+        const match = disposition.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
+        if (match && match[1]) {
+            return decodeURIComponent(match[1].replace(/"/g, ''));
         }
+
+        const safeName = String(importRecord.filename || `import_${importRecord.import_id}`)
+            .replace(/\.[^/.]+$/, '')
+            .replace(/[\\/:*?"<>|]+/g, '_');
+        return `analysis_report_${safeName}_${importRecord.import_id}_${Date.now()}.${format}`;
+    }
+
+    function escapeHtml(value) {
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 </script>
 {% endblock %}
