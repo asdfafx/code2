@@ -169,23 +169,16 @@
             </div>
         </div>
 
-        <!-- 导入记录表格 -->
+        <!-- 导入记录下拉选择 -->
         <div style="margin-top: 40px; padding-top: 30px; border-top: 2px solid #e9ecef;">
             <h3>📋 历史导入记录</h3>
-            <table style="width: 100%; margin-top: 15px; border-collapse: collapse;">
-                <thead>
-                    <tr style="background: #f8f9fa;">
-                        <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">选择</th>
-                        <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">文件名</th>
-                        <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">格式</th>
-                        <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">行数</th>
-                        <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">时间</th>
-                        <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">状态</th>
-                        <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">操作</th>
-                    </tr>
-                </thead>
-                <tbody id="importList"></tbody>
-            </table>
+            <div style="display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap; align-items: center;">
+                <select id="importSelect" onchange="selectImportFromDropdown(this)" style="min-width: 280px; flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+                    <option value="">暂无导入记录</option>
+                </select>
+                <button id="deleteImportButton" class="btn btn-danger" onclick="deleteSelectedImport()" style="padding: 10px 16px;">删除</button>
+            </div>
+            <div id="importSelectHint" style="margin-top: 8px; color: #666; font-size: 13px;">仅显示最近 5 条导入记录</div>
         </div>
     </div>
 </div>
@@ -426,54 +419,90 @@
     // 加载导入列表
     async function loadImportList() {
         try {
-            const response = await fetch(`${API_BASE}/logs/list`, {
+            const response = await fetch(`${API_BASE}/logs/list?per_page=5`, {
                 credentials: 'include'
             });
             const data = await response.json();
             
-            const tbody = document.getElementById('importList');
-            tbody.innerHTML = '';
+            const select = document.getElementById('importSelect');
+            const deleteButton = document.getElementById('deleteImportButton');
+            select.innerHTML = '';
             
-            if (!data.imports || data.imports.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #666; padding: 20px;">暂无导入记录</td></tr>';
+            const imports = (data.imports || []).slice(0, 5);
+            if (imports.length === 0) {
+                select.innerHTML = '<option value="">暂无导入记录</option>';
+                select.disabled = true;
+                if (deleteButton) deleteButton.disabled = true;
+                currentImportId = null;
+                document.getElementById('currentFileDisplay').textContent = '📄 请选择一个导入记录';
                 return;
             }
+
+            select.disabled = false;
+            if (deleteButton) deleteButton.disabled = false;
             
-            data.imports.forEach(imp => {
-                const tr = document.createElement('tr');
+            imports.forEach(imp => {
+                const option = document.createElement('option');
                 const isSelected = currentImportId === imp.import_id;
-                tr.innerHTML = `
-                    <td style="padding: 10px; border: 1px solid #ddd;">
-                        <input type="radio" name="importSelect" value="${imp.import_id}" 
-                            ${isSelected ? 'checked' : ''} 
-                            onchange="selectImport(${imp.import_id}, '${imp.filename}')">
-                    </td>
-                    <td style="padding: 10px; border: 1px solid #ddd;">${imp.filename || '粘贴文本'}</td>
-                    <td style="padding: 10px; border: 1px solid #ddd;">${imp.log_format || '未知'}</td>
-                    <td style="padding: 10px; border: 1px solid #ddd;">${imp.total_lines || 0}</td>
-                    <td style="padding: 10px; border: 1px solid #ddd;">${new Date(imp.import_time).toLocaleString()}</td>
-                    <td style="padding: 10px; border: 1px solid #ddd;"><span class="badge">${imp.status}</span></td>
-                    <td style="padding: 10px; border: 1px solid #ddd;">
-                        <button class="btn btn-danger" onclick="deleteImport(${imp.import_id}, '${imp.filename}')" style="padding: 5px 10px; font-size: 12px;">删除</button>
-                    </td>
-                `;
-                tbody.appendChild(tr);
+                option.value = imp.import_id;
+                option.dataset.filename = imp.filename || '';
+                option.textContent = formatImportOptionLabel(imp);
+                option.selected = isSelected;
+                select.appendChild(option);
                 
                 if (!currentImportId) {
                     currentImportId = imp.import_id;
                     document.getElementById('currentFileDisplay').textContent = `📄 ${imp.filename || '粘贴文本'}`;
-                    tr.querySelector('input').checked = true;
+                    option.selected = true;
                 }
             });
+
+            if (!imports.some(imp => currentImportId === imp.import_id)) {
+                const firstImport = imports[0];
+                currentImportId = firstImport.import_id;
+                select.value = String(firstImport.import_id);
+                document.getElementById('currentFileDisplay').textContent = `📄 ${firstImport.filename || '粘贴文本'}`;
+            }
         } catch (error) {
             console.error('加载导入列表失败:', error);
         }
+    }
+
+    function formatImportOptionLabel(imp) {
+        const filename = imp.filename || '粘贴文本';
+        const logFormat = imp.log_format || '未知';
+        const totalLines = imp.total_lines || 0;
+        const importTime = imp.import_time ? new Date(imp.import_time).toLocaleString() : '-';
+        const status = imp.status || '-';
+        return `${filename} | ${logFormat} | ${totalLines} 行 | ${importTime} | ${status}`;
+    }
+
+    function selectImportFromDropdown(select) {
+        const selectedOption = select.options[select.selectedIndex];
+        if (!selectedOption || !selectedOption.value) {
+            currentImportId = null;
+            document.getElementById('currentFileDisplay').textContent = '📄 请选择一个导入记录';
+            return;
+        }
+
+        selectImport(Number(selectedOption.value), selectedOption.dataset.filename);
     }
     
     // 选择导入记录
     function selectImport(importId, filename) {
         currentImportId = importId;
         document.getElementById('currentFileDisplay').textContent = `📄 ${filename || '粘贴文本'}`;
+    }
+
+    function deleteSelectedImport() {
+        const select = document.getElementById('importSelect');
+        const selectedOption = select.options[select.selectedIndex];
+        if (!selectedOption || !selectedOption.value) {
+            showMessage('请先选择导入记录', 'warning');
+            return;
+        }
+
+        deleteImport(Number(selectedOption.value), selectedOption.dataset.filename);
     }
 
     // 删除导入记录
@@ -553,8 +582,8 @@
     }
     
     function getSelectedImportId() {
-        const importSelect = document.querySelector('input[name="importSelect"]:checked');
-        return importSelect ? importSelect.value : null;
+        const importSelect = document.getElementById('importSelect');
+        return importSelect && importSelect.value ? importSelect.value : null;
     }
 
     // 执行规则初筛
