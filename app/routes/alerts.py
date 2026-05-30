@@ -1,4 +1,5 @@
 # 告警通知路由
+"""告警配置、告警测试和告警历史接口。"""
 from flask import Blueprint, request, jsonify, session
 from app import csrf
 from app.models import LogEntry, LogImport
@@ -41,7 +42,10 @@ def admin_required(f):
 @bp.route('/config', methods=['GET'])
 @admin_required
 def get_alert_config():
-    """获取告警配置"""
+    """获取告警配置。
+
+    当前返回默认配置；如果后续需要持久化，可在这里改为读取数据库。
+    """
     try:
         # 从配置文件或数据库中获取告警配置
         # 这里简化处理，返回默认配置
@@ -65,7 +69,10 @@ def get_alert_config():
 @bp.route('/config', methods=['PUT'])
 @admin_required
 def update_alert_config():
-    """更新告警配置"""
+    """更新告警配置。
+
+    当前仅校验并回显请求配置，后续可接入数据库或配置文件保存。
+    """
     try:
         data = request.get_json()
         
@@ -94,7 +101,7 @@ def update_alert_config():
 @bp.route('/test-email', methods=['POST'])
 @admin_required
 def test_email_alert():
-    """测试邮件告警"""
+    """发送一封测试邮件，验证邮件通道配置是否可用。"""
     try:
         data = request.get_json()
         recipients = data.get('recipients', [])
@@ -119,7 +126,7 @@ def test_email_alert():
 @bp.route('/test-sms', methods=['POST'])
 @admin_required
 def test_sms_alert():
-    """测试短信告警"""
+    """发送一条测试短信，验证短信通道配置是否可用。"""
     try:
         data = request.get_json()
         phone_numbers = data.get('phone_numbers', [])
@@ -143,7 +150,7 @@ def test_sms_alert():
 @bp.route('/history', methods=['GET'])
 @login_required
 def get_alert_history():
-    """获取告警历史"""
+    """基于当前用户高风险日志生成告警历史列表。"""
     try:
         limit = request.args.get('limit', 20, type=int)
         entries = LogEntry.query.join(LogImport).filter(
@@ -151,6 +158,7 @@ def get_alert_history():
             LogEntry.initial_risk_score >= 40
         ).order_by(LogEntry.request_time.desc(), LogEntry.created_at.desc()).limit(limit).all()
 
+        # 这里没有独立告警表，直接从风险分较高的日志条目派生告警记录。
         alerts = []
         for entry in entries:
             risk_score = entry.initial_risk_score or 0

@@ -1,4 +1,9 @@
 # 安全中间件 - 限流和登录保护
+"""简单的内存级安全控制。
+
+当前实现适合单进程开发/演示环境：登录失败记录和限流计数都存在内存中。
+如果部署到多进程或多机器环境，应迁移到 Redis 等共享存储。
+"""
 import time
 from functools import wraps
 from flask import request, jsonify, session
@@ -6,7 +11,7 @@ from app.models import User
 
 
 class SecurityMiddleware:
-    """安全中间件"""
+    """提供登录态校验、登录失败锁定和接口限流能力。"""
     
     def __init__(self):
         # 登录尝试记录 {ip: [(timestamp, success), ...]}
@@ -27,7 +32,7 @@ class SecurityMiddleware:
             if 'user_id' not in session:
                 return jsonify({'error': '请先登录'}), 401
             
-            # 检查用户是否仍然有效
+            # 每次请求都重新检查用户状态，防止已禁用账号继续使用旧 Session。
             user = User.query.get(session['user_id'])
             if not user or not user.is_active:
                 session.clear()
@@ -37,7 +42,7 @@ class SecurityMiddleware:
         return decorated_function
     
     def rate_limit(self, max_requests=None, window=None):
-        """限流装饰器"""
+        """基于客户端 IP 和 endpoint 的滑动窗口限流装饰器。"""
         def decorator(f):
             @wraps(f)
             def decorated_function(*args, **kwargs):
@@ -55,7 +60,7 @@ class SecurityMiddleware:
                 if endpoint not in self.rate_limits[client_ip]:
                     self.rate_limits[client_ip][endpoint] = []
                 
-                # 清理过期记录
+                # 只保留当前窗口内的访问时间戳，窗口外的记录不参与限流判断。
                 self.rate_limits[client_ip][endpoint] = [
                     t for t in self.rate_limits[client_ip][endpoint]
                     if now - t < win
@@ -76,7 +81,7 @@ class SecurityMiddleware:
         return decorator
     
     def check_login_attempt(self, username, success):
-        """记录登录尝试"""
+        """记录一次登录尝试，并返回当前 IP 是否仍允许继续登录。"""
         client_ip = request.remote_addr
         now = time.time()
         
@@ -128,7 +133,7 @@ class SecurityMiddleware:
         for ip in expired_ips:
             del self.login_attempts[ip]
         
-        # 清理限流记录
+        # 清理已经没有有效窗口记录的限流 IP，避免内存长期增长。
         expired_ips = [
             ip for ip, endpoints in self.rate_limits.items()
             if all(

@@ -1,11 +1,15 @@
 # 机器学习异常检测服务
+"""基于 IsolationForest 的访问日志异常检测。
+
+该服务把日志映射为数值特征，再用无监督模型发现与整体访问模式差异较大的请求。
+"""
 import numpy as np
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
 
 
 class MLAnomalyDetector:
-    """基于机器学习的异常检测器"""
+    """封装特征提取、模型训练、异常预测和规则检测对比。"""
     
     def __init__(self):
         self.model = IsolationForest(
@@ -46,7 +50,7 @@ class MLAnomalyDetector:
             status_code = entry.status_code if hasattr(entry, 'status_code') else entry.get('status_code', 200)
             response_size = entry.response_size if hasattr(entry, 'response_size') else entry.get('response_size', 0)
             
-            # 特征工程
+            # 特征工程：选择无需复杂上下文即可从单条日志中提取的安全相关信号。
             url_length = len(url) if url else 0
             param_length = len(params) if params else 0
             has_special_chars = sum(1 for c in url + params if c in ["'", '"', '<', '>', ';', '--', '/*'])
@@ -63,7 +67,7 @@ class MLAnomalyDetector:
                 0  # request_frequency 需要后续计算
             ])
         
-        # 计算请求频率（按 IP）
+        # 计算请求频率（按 IP），用于捕捉短时间内重复请求或扫描行为。
         ip_counts = {}
         for i, entry in enumerate(entries):
             ip = entry.ip_address if hasattr(entry, 'ip_address') else entry.get('ip_address')
@@ -87,7 +91,7 @@ class MLAnomalyDetector:
         
         X, _ = self.extract_features(entries)
         
-        # 标准化特征
+        # 标准化特征，避免 URL 长度、风险分等量纲不同影响模型判断。
         X_scaled = self.scaler.fit_transform(X)
         
         # 训练模型
@@ -111,7 +115,7 @@ class MLAnomalyDetector:
         X, _ = self.extract_features(entries)
         X_scaled = self.scaler.transform(X)
         
-        # 预测
+        # IsolationForest 返回 -1 表示异常，1 表示正常；分数越低越异常。
         predictions = self.model.predict(X_scaled)
         scores = self.model.decision_function(X_scaled)
         
@@ -143,7 +147,7 @@ class MLAnomalyDetector:
                     'timestamp': (entry.request_time if hasattr(entry, 'request_time') else entry.get('request_time')).isoformat() if (entry.request_time if hasattr(entry, 'request_time') else entry.get('request_time')) else None
                 })
         
-        # 按异常分数排序
+        # 按异常分数从低到高排序，越靠前越值得优先查看。
         anomalies.sort(key=lambda x: x['anomaly_score'])
         
         return anomalies
@@ -172,7 +176,7 @@ class MLAnomalyDetector:
             for e in rule_anomalies
         )
         
-        # 计算交集和差集
+        # 计算交集和差集，用来判断 ML 与规则各自发现了哪些风险。
         both_detected = ml_anomaly_ids & rule_anomaly_ids
         only_ml = ml_anomaly_ids - rule_anomaly_ids
         only_rule = rule_anomaly_ids - ml_anomaly_ids
@@ -198,5 +202,5 @@ class MLAnomalyDetector:
         }
 
 
-# 创建全局实例
+# 创建全局实例，模型训练后可在请求间复用。
 ml_detector = MLAnomalyDetector()

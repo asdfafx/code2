@@ -1,4 +1,9 @@
 # 项目配置文件
+"""集中管理 Flask 应用的运行配置。
+
+本文件只放环境、数据库、会话、上传、LLM 和安全阈值等配置项，
+业务逻辑应放在 routes 或 services 中，避免配置层产生副作用。
+"""
 import os
 from datetime import timedelta
 
@@ -6,6 +11,8 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 
 
 class Config:
+    """所有环境共享的基础配置。"""
+
     # 密钥配置
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'your-secret-key-here-change-in-production'
     
@@ -58,10 +65,13 @@ class Config:
     
     @staticmethod
     def init_app(app):
+        """预留环境初始化钩子，子类可在这里挂载日志或监控配置。"""
         pass
 
 
 class DevelopmentConfig(Config):
+    """开发环境配置：打开调试和 SQL 输出，方便本地排查问题。"""
+
     DEBUG = True
     SQLALCHEMY_ECHO = True
 
@@ -75,11 +85,14 @@ class TestingConfig(Config):
 
 
 class ProductionConfig(Config):
+    """生产环境配置：关闭调试，并要求 Session Cookie 走 HTTPS。"""
+
     DEBUG = False
     SESSION_COOKIE_SECURE = True
     SQLALCHEMY_ECHO = False
 
 
+# 根据 FLASK_CONFIG 名称选择配置类；default 指向开发配置，便于本地直接运行。
 config = {
     'development': DevelopmentConfig,
     'production': ProductionConfig,

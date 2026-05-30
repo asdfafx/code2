@@ -1,4 +1,5 @@
 # 机器学习异常检测路由
+"""机器学习异常检测接口。"""
 from flask import Blueprint, request, jsonify, session, current_app
 from app import db, csrf
 from app.models import LogEntry, LogImport
@@ -24,11 +25,11 @@ def login_required(f):
 @bp.route('/train', methods=['POST'])
 @login_required
 def train_model():
-    """训练异常检测模型"""
+    """使用当前用户日志训练 IsolationForest 异常检测模型。"""
     try:
         import_id = request.args.get('import_id', type=int)
         
-        # 构建查询
+        # 构建查询，默认使用当前用户所有日志，可按 import_id 限定训练数据。
         query = LogEntry.query.join(LogImport).filter(
             LogImport.user_id == session['user_id']
         )
@@ -56,7 +57,7 @@ def train_model():
 @bp.route('/detect', methods=['GET'])
 @login_required
 def detect_anomalies():
-    """检测异常"""
+    """使用已训练模型检测异常日志；未训练时自动用当前数据训练。"""
     try:
         import_id = request.args.get('import_id', type=int)
         threshold = request.args.get('threshold', -0.5, type=float)
@@ -95,7 +96,7 @@ def detect_anomalies():
 @bp.route('/compare', methods=['GET'])
 @login_required
 def compare_detection():
-    """对比 ML 和规则检测结果"""
+    """对比机器学习检测结果与规则初筛结果。"""
     try:
         from app.services.rule_filter import RuleFilter
         
@@ -130,7 +131,7 @@ def compare_detection():
                 }
             }), 400
         
-        # 检查是否需要重新计算风险评分
+        # 检查是否需要重新计算风险评分，避免历史数据未跑规则导致对比失真。
         zero_risk_count = sum(1 for e in entries if e.initial_risk_score == 0)
         if zero_risk_count > len(entries) * 0.8:  # 超过 80% 的日志风险评分为 0
             current_app.logger.warning(f'检测到 {zero_risk_count}/{len(entries)} 条日志风险评分为 0，重新计算...')
@@ -179,7 +180,7 @@ def compare_detection():
                     }
                 }), 400
         
-        # 对比分析
+        # 对比分析会返回 ML 独有、规则独有和两者共同命中的结果。
         comparison = ml_detector.compare_with_rules(entries)
         current_app.logger.info(f'对比结果: ML={comparison["ml_detected"]}, 规则={comparison["rule_detected"]}')
         

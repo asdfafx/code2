@@ -1,4 +1,5 @@
 # 多模型对比分析路由
+"""多模型分析和模型配置接口。"""
 from flask import Blueprint, request, jsonify, session
 from app import db, csrf
 from app.services.multi_model_llm import multi_model_service
@@ -24,7 +25,7 @@ def login_required(f):
 @bp.route('/analyze', methods=['POST'])
 @login_required
 def analyze_with_model():
-    """使用指定模型分析日志"""
+    """使用指定模型配置分析单条日志。"""
     try:
         data = request.get_json()
         
@@ -46,7 +47,7 @@ def analyze_with_model():
         if not model.is_active:
             return jsonify({'error': '模型未启用'}), 400
         
-        # 构建模型配置
+        # 将数据库模型配置转换为 MultiModelLLMService 需要的调用参数。
         model_config = {
             'model_type': model.model_name.split('-')[0] if '-' in model.model_name else 'ollama',
             'model_name': model.model_name,
@@ -73,7 +74,7 @@ def analyze_with_model():
 @bp.route('/compare', methods=['POST'])
 @login_required
 def compare_models():
-    """多模型对比分析"""
+    """使用多个启用模型对同一日志进行对比分析。"""
     try:
         data = request.get_json()
         
@@ -83,7 +84,7 @@ def compare_models():
         log_entry = data['log_entry']
         model_ids = data.get('model_ids', [])
         
-        # 如果没有指定模型，使用所有启用的模型
+        # 如果没有指定模型，默认使用所有启用模型，方便一键对比。
         if not model_ids:
             models = LLMModel.query.filter_by(is_active=True).all()
         else:
@@ -128,7 +129,7 @@ def compare_models():
 @bp.route('/models', methods=['GET'])
 @login_required
 def get_available_models():
-    """获取可用的多模型列表"""
+    """获取所有模型配置的展示信息。"""
     try:
         models = LLMModel.query.all()
         
@@ -159,7 +160,7 @@ def get_available_models():
 @bp.route('/add-model', methods=['POST'])
 @login_required
 def add_custom_model():
-    """添加自定义模型配置"""
+    """新增自定义模型配置。"""
     try:
         data = request.get_json()
         
@@ -185,7 +186,7 @@ def add_custom_model():
             is_active=data.get('is_active', True)
         )
         
-        # 保存额外字段（如文心一言的secret_key）
+        # 保存额外字段（如文心一言的 secret_key）。
         if 'secret_key' in data:
             setattr(new_model, 'secret_key', data['secret_key'])
         
@@ -205,7 +206,7 @@ def add_custom_model():
 @bp.route('/test-model', methods=['POST'])
 @login_required
 def test_model():
-    """测试模型连接"""
+    """使用固定测试日志验证模型接口是否可调用。"""
     try:
         data = request.get_json()
         

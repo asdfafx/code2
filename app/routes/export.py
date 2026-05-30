@@ -1,4 +1,5 @@
 # 导出服务路由
+"""分析结果导出接口，支持 CSV、HTML 和 JSON。"""
 import io
 import csv
 import json
@@ -27,12 +28,12 @@ def login_required(f):
 @bp.route('/csv', methods=['POST'])
 @login_required
 def export_csv():
-    """导出 CSV 格式"""
+    """导出指定导入批次的分析结果为 CSV 文件。"""
     try:
         data = request.get_json() or {}
         import_id = data.get('import_id')
         
-        # 如果没有提供 import_id，则获取最后一次导入的记录
+        # 如果没有提供 import_id，则默认导出当前用户最后一次导入的检测记录。
         if not import_id:
             last_import = LogImport.query.filter_by(
                 user_id=session['user_id']
@@ -51,7 +52,7 @@ def export_csv():
         
         results = query.all()
         
-        # 创建 CSV
+        # 创建 CSV，使用 utf-8-sig 方便 Excel 正确识别中文。
         output = io.StringIO()
         writer = csv.writer(output)
         
@@ -110,7 +111,7 @@ def export_csv():
 @bp.route('/html', methods=['POST'])
 @login_required
 def export_html():
-    """导出 HTML 报告"""
+    """导出带统计摘要和明细表格的 HTML 报告。"""
     try:
         data = request.get_json() or {}
         import_id = data.get('import_id')
@@ -134,7 +135,7 @@ def export_html():
         
         results = query.all()
         
-        # 统计信息
+        # 统计信息用于报告顶部的摘要卡片。
         total = len(results)
         high_risk = sum(1 for r in results if r.risk_level in ['高风险', '严重风险'])
         medium_risk = sum(1 for r in results if r.risk_level == '中风险')
@@ -145,7 +146,7 @@ def export_html():
             attack_type = result.attack_type or '未知'
             attack_types[attack_type] = attack_types.get(attack_type, 0) + 1
         
-        # 生成 HTML
+        # 生成 HTML 字符串并以附件形式返回给浏览器下载。
         html_content = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -264,7 +265,7 @@ def export_html():
 @bp.route('/json', methods=['POST'])
 @login_required
 def export_json():
-    """导出 JSON 格式"""
+    """导出结构化 JSON，便于二次处理或对接其他系统。"""
     try:
         data = request.get_json() or {}
         import_id = data.get('import_id')
@@ -288,7 +289,7 @@ def export_json():
         
         results = query.all()
         
-        # 构建 JSON 数据
+        # 构建 JSON 数据，包含导入批次信息和所有分析结果。
         export_data = {
             'export_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'import_info': None,

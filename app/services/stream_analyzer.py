@@ -1,4 +1,8 @@
 # 实时流式分析服务
+"""实时流式日志分析引擎。
+
+它在规则初筛基础上维护最近分析结果和风险基线，用于动态阈值、异常识别和实时看板。
+"""
 import threading
 from collections import deque
 from datetime import datetime
@@ -6,7 +10,7 @@ from app.services.rule_filter import RuleFilter
 
 
 class StreamAnalyzer:
-    """实时流式分析引擎"""
+    """对单条或连续日志流执行轻量级实时风险分析。"""
     
     def __init__(self):
         self.rule_filter = RuleFilter()
@@ -21,20 +25,20 @@ class StreamAnalyzer:
         self.lock = threading.Lock()
         
     def analyze_stream_entry(self, log_entry):
-        """分析单个流式日志条目"""
+        """分析单个流式日志条目，并更新缓冲区和风险基线。"""
         try:
             # 1. 规则初筛
             analysis = self.rule_filter.analyze_entry(log_entry)
             risk_score = analysis['risk_score']
             keywords = analysis['matched_keywords']
             
-            # 2. 动态阈值调整
+            # 2. 动态阈值调整：结合近期基线避免静态阈值过于死板。
             adjusted_risk_score = self._adjust_risk_score(risk_score)
             
             # 3. 确定风险等级
             risk_level = self._determine_risk_level(adjusted_risk_score)
             
-            # 4. 判断攻击类型
+            # 4. 判断攻击类型：优先使用规则分类，缺失时再做轻量文本判断。
             attack_type = ', '.join(analysis['attack_types']) if analysis['attack_types'] else self._detect_attack_type(keywords, log_entry)
             
             # 5. 构建分析结果
@@ -69,7 +73,7 @@ class StreamAnalyzer:
             return None
     
     def _adjust_risk_score(self, original_score):
-        """动态调整风险分数"""
+        """根据近期基线用 Z-score 动态调整风险分数。"""
         if not self.dynamic_threshold_enabled or len(self.baseline_risk_scores) < 10:
             return original_score
         
@@ -108,7 +112,7 @@ class StreamAnalyzer:
             return 'low'
     
     def _detect_attack_type(self, keywords, log_entry):
-        """检测攻击类型"""
+        """在规则未给出攻击类型时，从 URL/参数/原始日志中做兜底判断。"""
         if not keywords:
             return None
         
@@ -132,7 +136,7 @@ class StreamAnalyzer:
         if any(kw in combined for kw in command_keywords):
             return '命令注入'
         
-        # 目录遍历检测（需要多个 ../ 或访问敏感文件）
+        # 目录遍历检测（需要多个 ../ 或访问敏感文件，降低普通路径误报）。
         traversal_count = url.count('../') + url.count('..\\')
         sensitive_files = ['/etc/passwd', '/etc/shadow', '/windows/system32', 'boot.ini', 'web.config']
         
@@ -142,7 +146,7 @@ class StreamAnalyzer:
         return '可疑行为'
     
     def _is_anomaly(self, risk_score):
-        """判断是否为异常"""
+        """判断风险分是否显著偏离近期基线。"""
         if len(self.baseline_risk_scores) < 10:
             return risk_score > self.risk_thresholds['high']
         
@@ -174,7 +178,7 @@ class StreamAnalyzer:
             return list(self.analysis_buffer)[-count:]
     
     def get_statistics(self):
-        """获取流式分析统计信息"""
+        """汇总缓冲区中的风险分布、攻击类型和异常比例。"""
         with self.lock:
             if not self.analysis_buffer:
                 return {
@@ -226,5 +230,5 @@ class StreamAnalyzer:
             self.analysis_buffer.clear()
 
 
-# 全局实例
+# 全局实例，路由层直接复用同一份实时缓冲区。
 stream_analyzer = StreamAnalyzer()

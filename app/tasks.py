@@ -1,9 +1,14 @@
 # Celery 异步任务配置
+"""Celery 异步任务定义。
+
+这些任务用于把耗时的 LLM 分析从请求线程中拆出来执行。
+当前文件保留同步可调用的任务函数，便于未来接入独立 worker。
+"""
 from celery import Celery
 
 
 def make_celery(app=None):
-    """创建 Celery 实例"""
+    """创建 Celery 实例，并在传入 Flask app 时绑定应用上下文。"""
     celery = Celery('log_analysis')
     
     if app:
@@ -19,6 +24,8 @@ def make_celery(app=None):
         })
         
         class ContextTask(celery.Task):
+            """让 Celery 任务执行时自动进入 Flask 应用上下文。"""
+
             def __call__(self, *args, **kwargs):
                 with app.app_context():
                     return self.run(*args, **kwargs)
@@ -34,7 +41,7 @@ celery = make_celery()
 
 @celery.task(bind=True)
 def analyze_log_entry(self, log_data, risk_keywords, config, filename=None):
-    """异步分析单个日志条目"""
+    """异步分析单个日志条目，并返回保存后的结果 ID。"""
     from app.services.llm_service import LLMService
     from app import db
     from app.models import AnalysisResult
@@ -69,7 +76,7 @@ def analyze_log_entry(self, log_data, risk_keywords, config, filename=None):
         print(f"  所有字段: {list(analysis_result.keys()) if isinstance(analysis_result, dict) else 'Not a dict'}")
         print(f"{'*'*80}\n")
         
-        # 获取刚插入的结果ID
+        # LLMService 会负责入库；这里取最新结果 ID 作为任务执行结果返回给调用方。
         result = AnalysisResult.query.order_by(AnalysisResult.result_id.desc()).first()
         result_id = result.result_id if result else None
         
@@ -91,7 +98,7 @@ def analyze_log_entry(self, log_data, risk_keywords, config, filename=None):
 
 @celery.task(bind=True)
 def batch_analyze_logs(self, log_entries, config):
-    """批量异步分析日志"""
+    """批量提交日志分析任务，并通过 Celery state 汇报进度。"""
     
     total = len(log_entries)
     completed = 0
@@ -117,7 +124,7 @@ def batch_analyze_logs(self, log_entries, config):
             filename = log_entry.get('filename', '未知文件')
             risk_keywords = log_entry.get('risk_keywords', [])
             
-            # 调用单个分析任务
+            # 每条日志拆成单独任务，便于 worker 并发处理和单条失败隔离。
             result = analyze_log_entry.apply_async(
                 args=[log_data, risk_keywords, config, filename]
             )

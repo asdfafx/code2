@@ -1,4 +1,5 @@
 # 实时流式分析路由
+"""实时流式分析相关接口。"""
 from flask import Blueprint, request, jsonify, session
 from app import csrf
 from app.services.stream_analyzer import stream_analyzer
@@ -24,14 +25,14 @@ def login_required(f):
 @bp.route('/analyze', methods=['POST'])
 @login_required
 def analyze_stream():
-    """实时流式分析单个日志条目"""
+    """实时流式分析单个日志条目。"""
     try:
         data = request.get_json()
         
         if not data:
             return jsonify({'error': '请求体不能为空'}), 400
         
-        # 验证必要字段
+        # 验证必要字段，流式分析至少需要来源 IP 和请求 URL。
         required_fields = ['ip_address', 'url']
         missing_fields = [field for field in required_fields if field not in data]
         if missing_fields:
@@ -59,7 +60,7 @@ def analyze_stream():
 @bp.route('/batch-analyze', methods=['POST'])
 @login_required
 def batch_analyze_stream():
-    """批量流式分析"""
+    """批量执行流式分析，适合前端一次提交多条临时日志。"""
     try:
         data = request.get_json()
         entries = data.get('entries', [])
@@ -86,7 +87,7 @@ def batch_analyze_stream():
 @bp.route('/analyze-import', methods=['POST'])
 @login_required
 def analyze_import_stream():
-    """对指定导入任务的日志进行流式分析"""
+    """对指定导入任务的所有日志执行流式分析。"""
     try:
         data = request.get_json()
         import_id = data.get('import_id')
@@ -94,7 +95,7 @@ def analyze_import_stream():
         if not import_id:
             return jsonify({'error': '请提供 import_id'}), 400
         
-        # 验证 import_id 属于当前用户
+        # 验证 import_id 属于当前用户，避免跨用户访问日志数据。
         log_import = LogImport.query.filter_by(
             import_id=import_id,
             user_id=session['user_id']
@@ -103,7 +104,7 @@ def analyze_import_stream():
         if not log_import:
             return jsonify({'error': '导入任务不存在或无权访问'}), 404
         
-        # 重置流式分析器状态
+        # 重置流式分析器状态，让本批次的基线只来自当前导入任务。
         stream_analyzer.reset_baseline()
         stream_analyzer.clear_buffer()
         
@@ -113,7 +114,7 @@ def analyze_import_stream():
         if not log_entries:
             return jsonify({'error': '该任务没有日志数据'}), 404
         
-        # 逐条进行流式分析
+        # 逐条进行流式分析，并统计攻击类型出现次数。
         results = []
         attack_types_count = {}
         
@@ -198,7 +199,7 @@ def get_thresholds():
 @bp.route('/thresholds', methods=['PUT'])
 @login_required
 def update_thresholds():
-    """更新风险阈值"""
+    """更新低/中/高风险阈值。"""
     try:
         data = request.get_json()
         
@@ -206,7 +207,7 @@ def update_thresholds():
         medium = data.get('medium')
         high = data.get('high')
         
-        # 验证阈值合理性
+        # 验证阈值范围和顺序，避免出现低阈值高于高阈值的配置。
         if low is not None and (low < 0 or low > 100):
             return jsonify({'error': '低风险阈值必须在0-100之间'}), 400
         if medium is not None and (medium < 0 or medium > 100):
@@ -252,7 +253,7 @@ def toggle_dynamic_threshold():
 @bp.route('/reset-baseline', methods=['POST'])
 @login_required
 def reset_baseline():
-    """重置基线数据和缓冲区"""
+    """重置基线数据和缓冲区。"""
     try:
         stream_analyzer.reset_baseline()
         stream_analyzer.clear_buffer()  # 清空缓冲区
@@ -266,12 +267,12 @@ def reset_baseline():
 @bp.route('/anomalies', methods=['GET'])
 @login_required
 def get_anomalies():
-    """获取检测到的异常"""
+    """获取最近分析结果中被标记为异常的条目。"""
     try:
         count = request.args.get('count', 20, type=int)
         analyses = stream_analyzer.get_recent_analyses(count * 2)  # 获取更多以便筛选
         
-        # 筛选出异常
+        # 筛选出异常，再按请求参数限制返回最近 count 条。
         anomalies = [a for a in analyses if a.get('is_anomaly')]
         
         # 返回最近的count个异常

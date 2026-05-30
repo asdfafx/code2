@@ -1,4 +1,9 @@
 # 数据库模型定义
+"""数据库表结构和对象序列化方法。
+
+模型层只描述数据关系、密码哈希和面向接口的字典输出，
+复杂查询和业务流程放在 routes/services 中处理。
+"""
 from datetime import datetime, timezone
 from werkzeug.security import generate_password_hash, check_password_hash
 from app import db, login_manager
@@ -18,19 +23,19 @@ class User(UserMixin, db.Model):
     last_login = db.Column(db.DateTime)
     is_active = db.Column(db.Boolean, default=True)
 
-    # 关联关系
+    # 一个用户可以导入多批日志；删除用户时级联删除对应导入记录。
     log_imports = db.relationship('LogImport', backref='user', lazy='dynamic', cascade='all, delete-orphan')
 
     def set_password(self, password):
-        """设置密码"""
+        """保存密码哈希，避免明文密码落库。"""
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
-        """验证密码"""
+        """校验用户输入的密码是否匹配已保存的哈希。"""
         return check_password_hash(self.password_hash, password)
 
     def to_dict(self):
-        """转换为字典"""
+        """转换为前端接口可直接使用的用户字典。"""
         return {
             'user_id': self.user_id,
             'username': self.username,
@@ -56,11 +61,11 @@ class LogImport(db.Model):
     file_path = db.Column(db.String(500))
     status = db.Column(db.Enum('processing', 'completed', 'failed'), default='processing')
 
-    # 关联关系
+    # 一次导入对应多条解析后的日志；删除导入记录时同步删除日志条目。
     entries = db.relationship('LogEntry', backref='import_record', lazy='dynamic', cascade='all, delete-orphan')
 
     def to_dict(self):
-        """转换为字典"""
+        """转换为日志导入列表/详情接口使用的字典。"""
         return {
             'import_id': self.import_id,
             'filename': self.filename,
@@ -93,11 +98,11 @@ class LogEntry(db.Model):
     is_analyzed = db.Column(db.Boolean, default=False, index=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
-    # 关联关系
+    # 一条日志最多对应一条 LLM 分析结果。
     analysis_result = db.relationship('AnalysisResult', backref='log_entry', uselist=False, cascade='all, delete-orphan')
 
     def to_dict(self):
-        """转换为字典"""
+        """转换为日志条目列表接口使用的轻量字典。"""
         return {
             'entry_id': self.entry_id,
             'ip_address': self.ip_address,
@@ -130,7 +135,7 @@ class AnalysisResult(db.Model):
     model_id = db.Column(db.Integer)
 
     def to_dict(self):
-        """转换为字典"""
+        """转换为分析结果接口和导出功能使用的字典。"""
         return {
             'result_id': self.result_id,
             'entry_id': self.entry_id,  # 使用 result_id 填充
@@ -162,7 +167,7 @@ class LLMModel(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     def to_dict(self):
-        """转换为字典"""
+        """转换为模型配置接口可展示的字典，避免暴露 API Key。"""
         return {
             'model_id': self.model_id,
             'model_name': self.model_name,
@@ -175,5 +180,5 @@ class LLMModel(db.Model):
 
 @login_manager.user_loader
 def load_user(user_id):
-    """加载用户"""
+    """Flask-Login 回调：根据 Session 中保存的用户 ID 加载用户对象。"""
     return User.query.get(int(user_id))

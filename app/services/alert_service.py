@@ -1,4 +1,8 @@
 # 告警通知服务
+"""邮件、短信和 Webhook 告警发送服务。
+
+配置通过构造函数注入；当前短信发送是示例实现，生产环境需要替换为真实供应商 SDK。
+"""
 import smtplib
 import requests
 from email.mime.text import MIMEText
@@ -7,13 +11,13 @@ from datetime import datetime
 
 
 class AlertService:
-    """告警通知服务"""
+    """封装多种告警渠道，供路由或分析流程统一调用。"""
     
     def __init__(self, config=None):
         self.config = config or {}
         
     def send_email_alert(self, subject, message, recipients):
-        """发送电子邮件告警"""
+        """发送 HTML 格式的电子邮件告警。"""
         try:
             smtp_server = self.config.get('smtp_server', 'smtp.gmail.com')
             smtp_port = self.config.get('smtp_port', 587)
@@ -24,7 +28,7 @@ class AlertService:
                 print("警告: 未配置邮件发送者信息")
                 return False
             
-            # 创建邮件
+            # 创建 MIME 邮件，统一加上系统告警前缀，方便收件人过滤。
             msg = MIMEMultipart()
             msg['From'] = sender_email
             msg['To'] = ', '.join(recipients)
@@ -48,7 +52,7 @@ class AlertService:
             
             msg.attach(MIMEText(body, 'html'))
             
-            # 发送邮件
+            # 使用 STARTTLS 登录 SMTP 服务器后发送邮件。
             server = smtplib.SMTP(smtp_server, smtp_port)
             server.starttls()
             server.login(sender_email, sender_password)
@@ -76,8 +80,7 @@ class AlertService:
                 print("警告: 未配置阿里云短信服务信息")
                 return False
             
-            # 实际的阿里云短信API调用代码
-            # 这里只是示例，需要根据实际情况调整
+            # 逐个号码发送，避免单个号码失败影响后续号码的尝试。
             for phone in phone_numbers:
                 # 调用阿里云短信API
                 response = self._send_aliyun_sms(
@@ -110,7 +113,7 @@ class AlertService:
         return True
     
     def send_webhook_alert(self, webhook_url, payload):
-        """发送Webhook告警"""
+        """向第三方系统发送 JSON Webhook 告警。"""
         try:
             headers = {'Content-Type': 'application/json'}
             response = requests.post(webhook_url, json=payload, headers=headers, timeout=10)
@@ -127,7 +130,7 @@ class AlertService:
             return False
     
     def send_high_risk_alert(self, log_entry, analysis_result, notification_config):
-        """发送高风险告警"""
+        """根据通知配置对高风险分析结果触发多渠道告警。"""
         try:
             risk_level = analysis_result.get('risk_level', 'unknown')
             attack_type = analysis_result.get('attack_type', 'unknown')
@@ -147,7 +150,7 @@ class AlertService:
             <p>请立即检查相关日志并采取适当的安全措施。</p>
             """
             
-            # 发送邮件告警
+            # 根据开关逐个渠道发送；某个渠道未配置时静默跳过。
             if notification_config.get('email_enabled', False):
                 email_recipients = notification_config.get('email_recipients', [])
                 if email_recipients:
@@ -182,5 +185,5 @@ class AlertService:
             return False
 
 
-# 全局实例
+# 全局实例，路由层直接复用，避免每次请求重复创建。
 alert_service = AlertService()

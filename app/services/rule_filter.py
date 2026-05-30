@@ -1,11 +1,16 @@
 # 规则初筛服务
+"""基于关键词和简单启发式规则的日志初筛服务。
+
+规则初筛用于在调用 LLM 之前快速标记高风险请求，并为 LLM 选择更合适的提示词模板。
+"""
 import re
 
 
 class RuleFilter:
-    """基于规则的初步筛选器"""
+    """按攻击类型关键词计算风险分，并输出后续分析所需的上下文。"""
 
     PROMPT_TEMPLATE_LABELS = {
+        # 内部模板名到前端展示文案的映射。
         'general': '通用安全分析',
         'sql_injection': 'SQL 注入检测',
         'xss': 'XSS 攻击检测',
@@ -16,6 +21,7 @@ class RuleFilter:
     }
 
     ATTACK_TYPE_TEMPLATE_MAP = {
+        # 初筛命中的攻击类型到 LLM 提示词模板的映射。
         'SQL注入': 'sql_injection',
         'SQL 注入': 'sql_injection',
         'sql_injection': 'sql_injection',
@@ -73,13 +79,13 @@ class RuleFilter:
         }
     
     def analyze_entry(self, log_entry):
-        """分析单个日志条目"""
+        """分析单个日志条目，返回风险分、命中类型和推荐提示词模板。"""
         risk_score = 0
         raw_matched_keywords = []
         prompt_templates = []
         attack_types = []
         
-        # 组合需要检查的内容
+        # 组合需要检查的内容：URL、参数和 UA 是 Web 攻击 payload 最常出现的位置。
         check_content = f"{log_entry.get('url', '')} {log_entry.get('parameters', '')} {log_entry.get('user_agent', '')}".lower()
         raw_log = log_entry.get('raw_log', '').lower()
         
@@ -115,7 +121,7 @@ class RuleFilter:
             prompt_templates.append('general')
             attack_types.append('命令注入')
         
-        # 状态码异常
+        # 状态码异常本身不是攻击，但大量 4xx/5xx 常见于探测和利用失败。
         status_code = log_entry.get('status_code', 0)
         if status_code >= 400 and status_code < 500:
             risk_score += 5
@@ -127,7 +133,7 @@ class RuleFilter:
             risk_score += 15
             raw_matched_keywords.append('encoded_bypass')
         
-        # 限制最高分
+        # 限制最高分，并去重提示词模板，避免同一攻击类型重复触发。
         risk_score = min(risk_score, 100)
         prompt_templates = list(dict.fromkeys(prompt_templates))
         template_labels = [self.PROMPT_TEMPLATE_LABELS.get(t, t) for t in prompt_templates]
@@ -145,7 +151,7 @@ class RuleFilter:
         }
 
     def classify_keyword(self, keyword):
-        """根据命中词推断可选提示词模板。"""
+        """根据命中词或攻击类型推断最合适的 LLM 提示词模板。"""
         if keyword in self.ATTACK_TYPE_TEMPLATE_MAP:
             return self.ATTACK_TYPE_TEMPLATE_MAP[keyword]
         keyword_lower = (keyword or '').lower()
@@ -189,7 +195,7 @@ class RuleFilter:
             return 'low'
     
     def batch_filter(self, entries):
-        """批量筛选日志条目"""
+        """批量筛选日志条目，并按风险分从高到低排序。"""
         results = []
         
         for entry in entries:

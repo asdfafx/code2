@@ -1,12 +1,14 @@
 # 攻击行为时间线服务
+"""攻击行为时间线和行为模式分析服务。"""
 from datetime import datetime
 from collections import defaultdict
 
 
 class AttackTimelineService:
-    """攻击行为时间线分析服务"""
+    """基于日志时间、IP、URL 和风险分重构攻击行为。"""
     
     def __init__(self):
+        """当前服务无外部依赖，保留构造函数便于未来注入配置。"""
         pass
     
     def get_ip_timeline(self, ip_address, entries, time_window=3600):
@@ -50,7 +52,7 @@ class AttackTimelineService:
             
             timeline.append(event)
             
-            # 检测攻击序列
+            # 连续高风险请求会被归为同一攻击序列，中间出现正常请求则切断序列。
             if event['is_attack']:
                 current_sequence.append(event)
             else:
@@ -66,7 +68,7 @@ class AttackTimelineService:
         attack_count = sum(1 for e in timeline if e['is_attack'])
         attack_rate = round(attack_count / total_requests * 100, 2) if total_requests > 0 else 0
         
-        # 时间跨度
+        # 时间跨度用于判断攻击是短时爆发还是长时间持续。
         if timeline:
             first_time = timeline[0]['timestamp']
             last_time = timeline[-1]['timestamp']
@@ -114,7 +116,7 @@ class AttackTimelineService:
         # 按时间排序
         attacks.sort(key=lambda x: x.request_time if hasattr(x, 'request_time') else x.get('request_time'))
         
-        # 检测攻击链路
+        # 检测攻击链路：时间间隔小于阈值的高风险请求会被归为同一链路。
         chains = []
         current_chain = [attacks[0]]
         
@@ -140,7 +142,7 @@ class AttackTimelineService:
         return chains
     
     def _analyze_chain(self, chain):
-        """分析单个攻击链路"""
+        """将一组连续高风险请求整理为攻击链摘要。"""
         unique_ips = set(e.ip_address if hasattr(e, 'ip_address') else e.get('ip_address') for e in chain)
         attack_types = set()
         
@@ -180,7 +182,7 @@ class AttackTimelineService:
         Returns:
             dict: 行为模式分析结果
         """
-        # 按 IP 分组
+        # 按 IP 分组，先识别单个来源的暴力破解、扫描和持续攻击。
         ip_groups = defaultdict(list)
         for entry in entries:
             ip = entry.ip_address if hasattr(entry, 'ip_address') else entry.get('ip_address')
@@ -203,13 +205,13 @@ class AttackTimelineService:
             if stats['is_persistent']:
                 patterns['persistent'].append(stats)
         
-        # 检测分布式攻击（多个 IP 攻击同一目标）
+        # 检测分布式攻击（多个 IP 在同一时间窗口集中出现高风险请求）。
         patterns['distributed'] = self._detect_distributed_attack(entries)
         
         return patterns
     
     def _analyze_ip_pattern(self, ip, entries):
-        """分析单个 IP 的行为模式"""
+        """分析单个 IP 是否呈现暴力破解、扫描或持续攻击特征。"""
         total = len(entries)
         attacks = [e for e in entries if (e.initial_risk_score if hasattr(e, 'initial_risk_score') else e.get('initial_risk_score', 0)) > 20]
         attack_count = len(attacks)
@@ -246,7 +248,7 @@ class AttackTimelineService:
         }
     
     def _detect_distributed_attack(self, entries, threshold=5):
-        """检测分布式攻击"""
+        """按 5 分钟时间窗口检测多个 IP 同时发起的高风险请求。"""
         # 按时间窗口分组（5 分钟）
         time_windows = defaultdict(list)
         
@@ -276,5 +278,5 @@ class AttackTimelineService:
         return distributed_attacks
 
 
-# 创建全局实例
+# 创建全局实例，供时间线路由调用。
 timeline_service = AttackTimelineService()

@@ -1,4 +1,5 @@
 # IP 地理位置分析路由
+"""IP 地理位置、地图数据和异常地区接口。"""
 from flask import Blueprint, request, jsonify, session
 from app import csrf
 from app.models import LogEntry, LogImport
@@ -35,11 +36,11 @@ def get_ip_location(ip_address):
 @bp.route('/stats', methods=['GET'])
 @login_required
 def get_location_stats():
-    """获取地理位置统计信息"""
+    """按国家/地区汇总当前用户日志的请求量、攻击量和攻击率。"""
     try:
         import_id = request.args.get('import_id', type=int)
         
-        # 构建查询
+        # 构建查询，默认统计当前用户所有日志，可按 import_id 限定批次。
         query = LogEntry.query.join(LogImport).filter(
             LogImport.user_id == session['user_id']
         )
@@ -52,7 +53,7 @@ def get_location_stats():
         # 获取地理位置统计
         stats_dict = ip_geo_service.get_ip_stats(entries)
         
-        # 将字典转换为数组格式
+        # 将服务层字典转换为前端更容易渲染的数组格式。
         location_distribution = []
         for country, data in stats_dict.items():
             location_distribution.append({
@@ -92,7 +93,7 @@ def get_location_stats():
 @bp.route('/map-data', methods=['GET'])
 @login_required
 def get_map_data():
-    """获取地图可视化数据"""
+    """获取地图可视化需要的经纬度点位和风险摘要。"""
     try:
         import_id = request.args.get('import_id', type=int)
         
@@ -106,7 +107,7 @@ def get_map_data():
         
         entries = query.all()
         
-        # 收集所有唯一的 IP
+        # 收集唯一 IP，避免同一 IP 重复请求外部地理位置接口。
         unique_ips = set(entry.ip_address for entry in entries)
         
         # 查询每个 IP 的位置
@@ -143,7 +144,7 @@ def get_map_data():
 @bp.route('/anomalies', methods=['GET'])
 @login_required
 def get_anomalies():
-    """获取异常地区告警"""
+    """获取攻击率超过阈值的异常地区列表。"""
     try:
         threshold = request.args.get('threshold', 30, type=int)
         import_id = request.args.get('import_id', type=int)

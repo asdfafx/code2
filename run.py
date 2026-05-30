@@ -2,6 +2,12 @@
 # -*- coding: utf-8 -*-
 """
 日志可疑行为分析系统 - 启动脚本
+
+职责：
+1. 加载本地环境变量；
+2. 创建 Flask/SocketIO 应用；
+3. 初始化数据库、默认管理员和默认模型配置；
+4. 启动开发服务器。
 """
 import os
 import sys
@@ -26,7 +32,7 @@ from app.models import User, LLMModel
 
 
 def create_admin_user():
-    """创建管理员账号"""
+    """确保系统存在默认管理员账号，便于首次启动后登录后台。"""
     admin = User.query.filter_by(username='admin').first()
     if not admin:
         admin = User(
@@ -43,7 +49,7 @@ def create_admin_user():
 
 
 def create_default_model():
-    """创建默认 LLM 模型配置"""
+    """确保数据库中存在一条默认 LLM 模型配置。"""
     model = LLMModel.query.first()
     if not model:
         model = LLMModel(
@@ -67,7 +73,7 @@ if __name__ == '__main__':
     # 创建 Flask 应用
     app = create_app(config_name)
     
-    # 初始化数据库（在应用上下文中）
+    # 初始化数据库必须放在应用上下文中，否则 Flask-SQLAlchemy 无法定位当前应用。
     with app.app_context():
         print("正在初始化数据库...")
         db.create_all()
@@ -92,7 +98,7 @@ if __name__ == '__main__':
     print(f"上传目录：{upload_folder}")
     print("\n按 Ctrl+C 停止服务\n")
     
-    # 运行应用
+    # 使用 SocketIO 启动服务，兼容普通 HTTP 路由和 WebSocket 实时推送。
     socketio.run(
         app,
         host='0.0.0.0',

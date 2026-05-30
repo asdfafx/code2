@@ -1,4 +1,5 @@
 # 用户认证路由
+"""用户注册、登录、登出和个人资料接口。"""
 from flask import Blueprint, request, jsonify, session
 from datetime import datetime
 from app import db, csrf
@@ -13,7 +14,7 @@ csrf.exempt(bp)
 
 
 def login_required(f):
-    """登录验证装饰器"""
+    """要求请求已经建立用户 Session。"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
@@ -23,7 +24,7 @@ def login_required(f):
 
 
 def admin_required(f):
-    """管理员权限装饰器"""
+    """要求当前登录用户是管理员。"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
@@ -37,14 +38,14 @@ def admin_required(f):
 
 @bp.route('/register', methods=['POST'])
 def register():
-    """用户注册"""
+    """创建普通用户账号。"""
     try:
         data = request.get_json()
         username = data.get('username', '').strip()
         password = data.get('password', '')
         email = data.get('email', '').strip()
         
-        # 验证输入
+        # 验证输入，避免空用户名、弱密码和重复账号进入数据库。
         if not username or not password:
             return jsonify({'error': '用户名和密码不能为空'}), 400
         
@@ -59,7 +60,7 @@ def register():
         if email and User.query.filter_by(email=email).first():
             return jsonify({'error': '邮箱已被注册'}), 400
         
-        # 创建新用户
+        # 创建新用户时只保存密码哈希，不保存明文密码。
         user = User(
             username=username,
             email=email,
@@ -83,7 +84,7 @@ def register():
 @bp.route('/login', methods=['POST'])
 @security.rate_limit(max_requests=10, window=60)  # 每分钟最多 10 次登录尝试
 def login():
-    """用户登录"""
+    """校验用户名密码，写入 Session 并更新最后登录时间。"""
     try:
         data = request.get_json()
         username = data.get('username', '').strip()
@@ -115,7 +116,7 @@ def login():
         user.last_login = datetime.now()
         db.session.commit()
         
-        # 设置会话
+        # 设置会话，后续 API 通过 session['user_id'] 判断登录状态。
         session['user_id'] = user.user_id
         session['username'] = user.username
         session['role'] = user.role
@@ -139,7 +140,7 @@ def logout():
 
 @bp.route('/check', methods=['GET'])
 def check_auth():
-    """检查认证状态"""
+    """检查当前请求是否仍处于登录状态。"""
     if 'user_id' not in session:
         return jsonify({'error': '未登录'}), 401
     
@@ -191,14 +192,14 @@ def get_profile():
 @bp.route('/profile', methods=['PUT'])
 @login_required
 def update_profile():
-    """修改个人信息"""
+    """修改当前用户个人资料。"""
     try:
         user = User.query.get(session['user_id'])
         data = request.get_json()
         
         email = data.get('email', '').strip()
         
-        # 检查邮箱是否已被其他用户使用
+        # 检查邮箱是否已被其他用户使用，避免唯一索引冲突。
         if email:
             existing_user = User.query.filter_by(email=email).first()
             if existing_user and existing_user.user_id != user.user_id:
@@ -220,7 +221,7 @@ def update_profile():
 @bp.route('/password', methods=['PUT'])
 @login_required
 def change_password():
-    """修改密码"""
+    """验证旧密码后更新当前用户密码。"""
     try:
         user = User.query.get(session['user_id'])
         data = request.get_json()

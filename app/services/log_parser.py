@@ -1,11 +1,12 @@
 # 日志解析服务
+"""将原始访问日志解析为数据库可保存的结构化字段。"""
 import re
 from datetime import datetime
 from app.models import LogEntry
 
 
 class LogParser:
-    """日志解析器"""
+    """支持 Apache、Nginx 和简单自定义格式的日志解析器。"""
     
     # Apache Common Log Format
     APACHE_PATTERN = re.compile(
@@ -39,7 +40,7 @@ class LogParser:
         self.failed_count = 0
     
     def parse_line(self, line, log_format='apache'):
-        """解析单行日志"""
+        """按指定格式解析单行日志，解析失败返回 None。"""
         line = line.strip()
         if not line:
             return None
@@ -69,7 +70,7 @@ class LogParser:
         except:
             request_time = datetime.now()
         
-        # 解析 URL 和参数
+        # 将 URL path 与 query string 拆开，便于后续规则检测只检查参数部分。
         url_parts = groups[5].split('?', 1)
         url = url_parts[0]
         parameters = url_parts[1] if len(url_parts) > 1 else ''
@@ -100,7 +101,7 @@ class LogParser:
         except:
             request_time = datetime.now()
         
-        # 解析 URL 和参数
+        # Nginx combined 格式额外包含 Referer 和 User-Agent。
         url_parts = groups[5].split('?', 1)
         url = url_parts[0]
         parameters = url_parts[1] if len(url_parts) > 1 else ''
@@ -139,7 +140,7 @@ class LogParser:
         }
     
     def parse_file(self, file_path, log_format='apache'):
-        """解析日志文件"""
+        """逐行读取日志文件并返回解析成功的条目列表。"""
         entries = []
         
         try:
@@ -155,7 +156,7 @@ class LogParser:
             raise Exception(f"读取文件失败：{str(e)}")
     
     def parse_text(self, text, log_format='apache'):
-        """解析日志文本"""
+        """解析用户粘贴的日志文本。"""
         entries = []
         lines = text.split('\n')
         
@@ -168,7 +169,7 @@ class LogParser:
         return entries
     
     def create_entries(self, import_record, entries_data):
-        """批量创建日志条目"""
+        """将解析结果批量写入 log_entries 表。"""
         batch_entries = []
         
         for data in entries_data:
@@ -186,7 +187,7 @@ class LogParser:
             )
             batch_entries.append(entry)
         
-        # 批量插入
+        # 批量插入可减少数据库往返次数，适合一次导入大量日志。
         if batch_entries:
             from app import db
             db.session.bulk_save_objects(batch_entries)

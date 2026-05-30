@@ -1,11 +1,12 @@
 # 多模型LLM服务 - 支持OpenAI、文心一言、Ollama等
+"""统一封装多种 LLM Provider 的日志分析调用方式。"""
 import requests
 import json
 from datetime import datetime
 
 
 class MultiModelLLMService:
-    """多模型LLM服务"""
+    """根据模型类型分发到不同 Provider，并把响应统一解析为 JSON。"""
     
     def __init__(self):
         self.supported_models = {
@@ -30,7 +31,7 @@ class MultiModelLLMService:
         if model_type not in self.supported_models:
             raise ValueError(f"不支持的模型类型: {model_type}")
         
-        # 构建提示词
+        # 统一构建安全分析提示词，避免各 Provider 的提示词口径不一致。
         prompt = self._build_prompt(log_entry)
         
         # 调用对应的模型
@@ -42,7 +43,7 @@ class MultiModelLLMService:
             raise
     
     def _build_prompt(self, log_entry):
-        """构建分析提示词"""
+        """构建要求模型只返回 JSON 的日志分析提示词。"""
         ip_address = log_entry.get('ip_address', '')
         url = log_entry.get('url', '')
         method = log_entry.get('method', 'GET')
@@ -72,7 +73,7 @@ class MultiModelLLMService:
         return prompt
     
     def _call_ollama(self, prompt, config):
-        """调用Ollama本地模型"""
+        """调用 Ollama 本地模型。"""
         api_endpoint = config.get('api_endpoint', 'http://localhost:11434')
         model_name = config.get('model_name', 'qwen:7b')
         max_tokens = config.get('max_tokens', 512)
@@ -99,7 +100,7 @@ class MultiModelLLMService:
         return self._parse_llm_response(content)
     
     def _call_openai(self, prompt, config):
-        """调用OpenAI API"""
+        """调用 OpenAI Chat Completions 兼容接口。"""
         api_key = config.get('api_key')
         if not api_key:
             raise ValueError("OpenAI API密钥未配置")
@@ -133,7 +134,7 @@ class MultiModelLLMService:
         return self._parse_llm_response(content)
     
     def _call_qianfan(self, prompt, config):
-        """调用百度文心一言"""
+        """调用百度千帆/文心一言接口。"""
         api_key = config.get('api_key')
         secret_key = config.get('secret_key')
         
@@ -144,7 +145,7 @@ class MultiModelLLMService:
         max_tokens = config.get('max_tokens', 512)
         temperature = config.get('temperature', 0.7)
         
-        # 获取access token
+        # 文心一言需要先用 API Key + Secret Key 换取 access token。
         token_url = "https://aip.baidubce.com/oauth/2.0/token"
         token_params = {
             "grant_type": "client_credentials",
@@ -183,12 +184,12 @@ class MultiModelLLMService:
         return self._parse_llm_response(content)
     
     def _parse_llm_response(self, content):
-        """解析LLM响应，提取JSON"""
+        """解析 LLM 响应，提取 JSON 并补齐必要字段。"""
         try:
             # 尝试直接解析JSON
             content = content.strip()
             
-            # 如果包含```json标记，提取其中的内容
+            # 兼容模型把 JSON 包在 Markdown 代码块里的情况。
             if '```json' in content:
                 start = content.find('```json') + 7
                 end = content.find('```', start)
@@ -201,7 +202,7 @@ class MultiModelLLMService:
             # 解析JSON
             result = json.loads(content)
             
-            # 验证必要字段
+            # 验证必要字段，避免前端读取缺失字段时报错。
             required_fields = ['risk_score', 'is_suspicious', 'attack_type', 'keywords', 'reason']
             for field in required_fields:
                 if field not in result:
@@ -220,7 +221,7 @@ class MultiModelLLMService:
             print(f"解析LLM响应失败: {e}")
             print(f"原始内容: {content[:200]}")
             
-            # 返回默认结果
+            # 返回默认结果，保证单个模型格式异常不会中断多模型对比。
             return {
                 'risk_score': 0,
                 'is_suspicious': False,
@@ -265,5 +266,5 @@ class MultiModelLLMService:
         return results
 
 
-# 全局实例
+# 全局实例，路由层通过它执行单模型或多模型分析。
 multi_model_service = MultiModelLLMService()

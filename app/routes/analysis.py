@@ -1,4 +1,5 @@
 # 分析结果路由
+"""LLM 分析任务、结果查询和统计接口。"""
 from flask import Blueprint, request, jsonify, session, current_app
 from app import db, csrf
 from app.models import LogEntry, AnalysisResult, LogImport
@@ -26,12 +27,12 @@ def login_required(f):
 @login_required
 @security.rate_limit(max_requests=10, window=600)  # 10分钟最多10次分析任务
 def start_analysis():
-    """开始分析任务"""
+    """对当前用户的日志启动 LLM 分析。"""
     try:
         data = request.get_json()
         import_id = data.get('import_id')
         
-        # 构建查询 - 获取当前用户的所有日志
+        # 构建查询 - 只允许分析当前用户导入的日志，避免越权读取其他用户数据。
         query = LogEntry.query.join(LogImport).filter(
             LogImport.user_id == session['user_id']
         )
@@ -40,7 +41,7 @@ def start_analysis():
         if import_id:
             query = query.filter(LogEntry.import_id == import_id)
         
-        # 只分析未分析的或高风险的条目
+        # 只分析未分析的或高风险的条目，减少重复 LLM 调用成本。
         entries = query.filter(
             (LogEntry.is_analyzed == False) | (LogEntry.initial_risk_score >= 20)
         ).all()
@@ -66,7 +67,7 @@ def start_analysis():
         
         for entry in entries:
             try:
-                # 准备日志数据
+                # 准备传给 LLMService 的结构化日志上下文。
                 log_data = {
                     'entry_id': entry.entry_id,  # 添加 entry_id
                     'import_id': entry.import_id,  # 添加 import_id
@@ -88,7 +89,7 @@ def start_analysis():
                 # 获取文件名
                 filename = entry.import_record.filename if entry.import_record else '未知文件'
                 
-                # 调用 LLM 分析（会在内部保存结果到数据库）
+                # 调用 LLM 分析（LLMService 内部会保存结果到数据库）。
                 analysis_result = llm_service.analyze(
                     log_data, 
                     risk_keywords,
@@ -136,7 +137,7 @@ def start_analysis():
 @bp.route('/results', methods=['GET'])
 @login_required
 def get_results():
-    """获取分析结果"""
+    """分页获取分析结果，支持风险等级、攻击类型、导入批次和关键字筛选。"""
     try:
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 15, type=int)
@@ -145,7 +146,7 @@ def get_results():
         import_id = request.args.get('import_id', None)
         search = request.args.get('search', None)
         
-        # 构建查询 - 通过 LogEntry 关联
+        # 构建查询 - 通过 LogEntry 和 LogImport 关联，保证只返回当前用户数据。
         query = db.session.query(AnalysisResult, LogEntry).join(
             LogEntry,
             AnalysisResult.entry_id == LogEntry.entry_id
@@ -156,7 +157,7 @@ def get_results():
             LogImport.user_id == session['user_id']
         )
         
-        # 筛选条件
+        # 根据前端传入的筛选条件动态追加 SQL 条件。
         if risk_level:
             query = query.filter(AnalysisResult.risk_level == risk_level)
         if attack_type:
@@ -198,7 +199,7 @@ def get_results():
 @bp.route('/stats', methods=['GET'])
 @login_required
 def get_statistics():
-    """获取统计信息"""
+    """获取当前用户日志与分析结果的汇总统计。"""
     try:
         # 总日志数
         total_logs = LogEntry.query.join(LogImport).filter(
@@ -234,7 +235,7 @@ def get_statistics():
             AnalysisResult.attack_type.notin_(['none', 'None', '无', ''])
         ).group_by(AnalysisResult.attack_type).all()
         
-        # 最近分析趋势（最近 7 天）
+        # 最近分析趋势（最近 7 天），用于前端趋势图。
         from datetime import datetime, timedelta
         from datetime import timezone as dt_timezone
         seven_days_ago = datetime.now(dt_timezone.utc) - timedelta(days=7)
@@ -275,7 +276,7 @@ def get_statistics():
 @bp.route('/<int:result_id>', methods=['GET'])
 @login_required
 def get_result_detail(result_id):
-    """获取分析结果详情"""
+    """获取单条分析结果详情，并附带原始日志内容。"""
     try:
         result = AnalysisResult.query.join(LogEntry).join(LogImport).filter(
             AnalysisResult.result_id == result_id,

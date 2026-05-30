@@ -1,4 +1,5 @@
 # 日志管理路由
+"""日志上传、粘贴导入、规则初筛和 LLM 分析接口。"""
 import os
 from flask import Blueprint, request, jsonify, current_app, session
 from werkzeug.utils import secure_filename
@@ -18,7 +19,7 @@ csrf.exempt(bp)
 
 
 def login_required(f):
-    """登录验证装饰器"""
+    """要求请求已登录后才能访问日志数据。"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
@@ -28,7 +29,7 @@ def login_required(f):
 
 
 def allowed_file(filename):
-    """检查文件扩展名"""
+    """检查上传文件扩展名是否在允许列表内。"""
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in {'txt', 'log'}
 
@@ -37,7 +38,7 @@ def allowed_file(filename):
 @login_required
 @security.rate_limit(max_requests=20, window=300)  # 5分钟最多20次上传
 def upload_log():
-    """上传日志文件"""
+    """上传日志文件，解析后写入数据库并广播最新日志。"""
     try:
         if 'file' not in request.files:
             return jsonify({'error': '未找到上传文件'}), 400
@@ -49,7 +50,7 @@ def upload_log():
         if not allowed_file(file.filename):
             return jsonify({'error': '不支持的文件格式，请上传.txt 或.log 文件'}), 400
         
-        # 保存文件
+        # 保存文件到上传目录，文件名前加时间戳避免重名覆盖。
         upload_folder = current_app.config['UPLOAD_FOLDER']
         os.makedirs(upload_folder, exist_ok=True)
         
@@ -59,7 +60,7 @@ def upload_log():
         file_path = os.path.join(upload_folder, saved_filename)
         file.save(file_path)
         
-        # 创建导入记录
+        # 创建导入记录，先标记为 processing，解析完成后再更新状态。
         log_format = request.form.get('format', 'apache')
         import_record = LogImport(
             user_id=session['user_id'],
@@ -71,7 +72,7 @@ def upload_log():
         db.session.add(import_record)
         db.session.commit()
         
-        # 解析日志
+        # 解析日志并将结构化条目批量写入数据库。
         parser = LogParser()
         entries_data = parser.parse_file(file_path, log_format)
         
@@ -88,7 +89,7 @@ def upload_log():
         
         db.session.commit()
         
-        # 如果有新条目，通过 WebSocket 广播
+        # 如果有新条目，通过 WebSocket 广播最近几条，驱动实时看板更新。
         if entries_data and len(entries_data) > 0:
             # 获取最新的几个条目进行广播
             recent_entries = LogEntry.query.filter_by(import_id=import_record.import_id)\
@@ -114,7 +115,7 @@ def upload_log():
 @bp.route('/paste', methods=['POST'])
 @login_required
 def paste_log():
-    """粘贴日志文本"""
+    """导入用户粘贴的日志文本。"""
     try:
         data = request.get_json()
         text = data.get('text', '')
@@ -123,7 +124,7 @@ def paste_log():
         if not text.strip():
             return jsonify({'error': '日志内容不能为空'}), 400
         
-        # 创建导入记录
+        # 粘贴文本没有真实文件名，统一使用 pasted_text.txt 作为导入来源。
         import_record = LogImport(
             user_id=session['user_id'],
             filename='pasted_text.txt',
@@ -133,7 +134,7 @@ def paste_log():
         db.session.add(import_record)
         db.session.commit()
         
-        # 解析日志
+        # 使用与文件上传相同的解析流程，保证数据结构一致。
         parser = LogParser()
         entries_data = parser.parse_text(text, log_format)
         
@@ -175,7 +176,7 @@ def paste_log():
 @bp.route('/list', methods=['GET'])
 @login_required
 def list_logs():
-    """获取日志列表"""
+    """分页获取当前用户的日志导入记录。"""
     try:
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 20, type=int)
@@ -205,7 +206,7 @@ def list_logs():
 @bp.route('/<int:import_id>', methods=['GET'])
 @login_required
 def get_log_detail(import_id):
-    """获取日志详情"""
+    """获取指定导入批次的日志条目详情。"""
     try:
         import_record = LogImport.query.filter_by(
             import_id=import_id,
@@ -236,7 +237,7 @@ def get_log_detail(import_id):
 
 
 def _log_entry_to_rule_data(entry):
-    """Build the dict consumed by the rule filter from a LogEntry."""
+    """将 LogEntry 模型转换为规则初筛服务需要的字典。"""
     return {
         'ip_address': entry.ip_address,
         'request_time': entry.request_time,
@@ -252,7 +253,7 @@ def _log_entry_to_rule_data(entry):
 
 
 def _summarize_pre_screen(entries):
-    """Summarize persisted pre-screen fields without running rules again."""
+    """基于已保存的初筛字段汇总统计，不重复执行规则。"""
     stats = {'total_scanned': len(entries), 'flagged': 0, 'top_keywords': {}, 'attack_types': {}}
     rule_filter = RuleFilter()
     template_labels = getattr(rule_filter, 'PROMPT_TEMPLATE_LABELS', {})
@@ -262,6 +263,7 @@ def _summarize_pre_screen(entries):
         if risk_score >= 20:
             stats['flagged'] += 1
 
+        # risk_keywords 保存的是逗号分隔字符串，这里拆回列表用于统计。
         keywords = [kw for kw in (entry.risk_keywords or '').split(',') if kw]
         for kw in keywords:
             stats['top_keywords'][kw] = stats['top_keywords'].get(kw, 0) + 1
@@ -274,10 +276,11 @@ def _summarize_pre_screen(entries):
 
 
 def _choose_prompt_template(default_analysis_type, pre_screen_keywords):
-    """Choose the prompt template for one log entry from its pre-screen result."""
+    """根据初筛命中结果选择单条日志的 LLM 提示词模板。"""
     valid_templates = set(getattr(RuleFilter, 'PROMPT_TEMPLATE_LABELS', {}).keys())
     rule_filter = RuleFilter()
 
+    # 初筛命中的攻击类型优先级高于前端默认分析类型。
     for keyword in pre_screen_keywords:
         template_name = rule_filter.classify_keyword(keyword)
         if template_name in valid_templates:
@@ -290,7 +293,7 @@ def _choose_prompt_template(default_analysis_type, pre_screen_keywords):
 
 
 def _run_pre_screen_for_import(import_id):
-    """Run rule pre-screening and persist score/keywords on log entries."""
+    """对一个导入批次执行规则初筛，并把风险分和关键词写回日志条目。"""
     import_record = LogImport.query.filter_by(
         import_id=import_id,
         user_id=session['user_id']
@@ -303,6 +306,7 @@ def _run_pre_screen_for_import(import_id):
     stats = {'total_scanned': len(entries), 'flagged': 0, 'top_keywords': {}, 'attack_types': {}}
 
     for entry in entries:
+        # 规则初筛只使用结构化日志字段，不依赖 LLM。
         analysis = rule_filter.analyze_entry(_log_entry_to_rule_data(entry))
         risk_score = analysis.get('risk_score', 0)
         matched_keywords = analysis.get('matched_keywords', [])
@@ -311,6 +315,7 @@ def _run_pre_screen_for_import(import_id):
         entry.initial_risk_score = risk_score
         entry.risk_keywords = ','.join(matched_keywords)
 
+        # 风险分达到阈值后加入可疑列表，前端可直接展示前 100 条。
         if risk_score >= 20:
             stats['flagged'] += 1
             suspicious_entries.append({
@@ -342,7 +347,7 @@ def _run_pre_screen_for_import(import_id):
 @bp.route('/<int:import_id>/filter', methods=['POST'])
 @login_required
 def filter_logs(import_id):
-    """筛选可疑日志"""
+    """兼容旧接口：对指定导入批次筛选可疑日志。"""
     try:
         result = _run_pre_screen_for_import(import_id)
         result['total'] = result['suspicious_count']
@@ -370,7 +375,7 @@ def pre_screen_logs():
 @bp.route('/<int:import_id>', methods=['DELETE'])
 @login_required
 def delete_log(import_id):
-    """删除日志导入"""
+    """删除指定日志导入记录及其本地上传文件。"""
     try:
         import_record = LogImport.query.filter_by(
             import_id=import_id,
@@ -394,7 +399,11 @@ def delete_log(import_id):
 @bp.route('/analyze-with-config', methods=['POST'])
 @login_required
 def analyze_with_custom_config():
-    """使用自定义配置分析日志"""
+    """使用请求中传入的模型配置直接分析日志。
+
+    这是一个较早的兼容接口：它在路由内组装请求体并直接调用模型服务。
+    新流程优先使用 /llm-analyze 和 LLMService。
+    """
     try:
         import requests
         import json
@@ -416,7 +425,7 @@ def analyze_with_custom_config():
         thinking_enabled = data.get('thinking_enabled', True)  # 默认启用思考模式
         reasoning_effort = data.get('reasoning_effort', 'high')  # 思考强度: low/medium/high/max
         
-        # 获取日志条目
+        # 获取日志条目：优先从数据库读取，也支持直接传入日志文本。
         entries = []
         if import_id:
             # 从数据库获取
@@ -461,12 +470,12 @@ def analyze_with_custom_config():
         suspicious_logs = []
         risk_stats = {'critical': 0, 'high': 0, 'medium': 0, 'low': 0}
         
-        # 构建LLM请求头
+        # 构建 LLM 请求头；如果用户提供 API Key，则按 Bearer Token 传递。
         headers = {'Content-Type': 'application/json'}
         if api_key:
             headers['Authorization'] = f'Bearer {api_key}'
         
-        # 确定API URL和请求格式
+        # 根据模型类型确定 API URL 和请求格式。
         if model_type == 'deepseek':
             api_url = f"{api_endpoint}/chat/completions" if '/v1' not in api_endpoint else api_endpoint
             llm_payload_template = {
@@ -490,7 +499,7 @@ def analyze_with_custom_config():
         # 初筛统计
         pre_screen_stats = {'total_scanned': 0, 'flagged': 0, 'top_keywords': {}, 'attack_types': {}}
 
-        # 遍历分析每条日志
+        # 遍历分析每条日志；限制最多 50 条，避免一次请求占用过长时间。
         for entry in entries[:50]:  # 限制最多分析50条
             try:
                 # 规则初筛
@@ -529,7 +538,7 @@ def analyze_with_custom_config():
                     confidence_score=0.8
                 )
                 
-                # 调用LLM
+                # 调用 LLM。这里先把模板中的 {prompt} 替换为真实提示词，再还原成 JSON。
                 llm_payload = json.dumps(llm_payload_template).replace('"{prompt}"', json.dumps(prompt))
                 llm_payload = json.loads(llm_payload)
                 
@@ -547,7 +556,7 @@ def analyze_with_custom_config():
                     llm_response = result.get('output', {}).get('text', '')
                     reasoning_content = ''
                 
-                # 解析LLM响应
+                # 解析 LLM 响应并补充初筛上下文，便于前端展示。
                 parsed_result = _parse_llm_analysis(llm_response)
                 parsed_result['raw_log'] = entry.get('raw_log', '')
                 parsed_result['url'] = entry.get('url', '')
@@ -600,7 +609,7 @@ def analyze_with_custom_config():
 @bp.route('/last', methods=['GET'])
 @login_required
 def get_last_import():
-    """获取最后一次导入记录"""
+    """获取当前用户最后一次日志导入记录。"""
     try:
         last_import = LogImport.query.filter_by(
             user_id=session['user_id']
@@ -616,12 +625,12 @@ def get_last_import():
 
 
 def _parse_llm_analysis(text):
-    """解析LLM分析响应"""
+    """解析 LLM 文本响应，优先提取 JSON，失败时做简单文本兜底分类。"""
     try:
         import json
         import re
 
-        # 尝试从文本中提取JSON
+        # 尝试从文本中提取 JSON，兼容 Markdown 代码块和裸 JSON。
         json_patterns = [
             r'```json\s*(.*?)\s*```',
             r'```\s*\{[^}]+\}\s*```',
@@ -645,7 +654,7 @@ def _parse_llm_analysis(text):
                 except:
                     pass
         
-        # 无法解析JSON，尝试文本分析
+        # 无法解析 JSON 时，根据关键词做保守兜底分类。
         text_lower = text.lower()
         
         # 简单文本分析
@@ -688,7 +697,7 @@ def _parse_llm_analysis(text):
 @bp.route('/test-llm', methods=['POST'])
 @login_required
 def test_llm_connection():
-    """测试LLM连接"""
+    """使用短提示词测试指定 LLM 连接是否可用。"""
     try:
         import requests
         
@@ -800,7 +809,7 @@ def llm_analyze():
             if not model_name:
                 model_name = 'deepseek-chat'
         
-        # 获取日志条目
+        # 获取日志条目，只允许按 import_id 分析已导入的数据。
         entries = []
         filename = 'unknown'  # 默认文件名
         if import_id:
@@ -885,7 +894,7 @@ def llm_analyze():
                 .all()
         )
 
-        # 遍历分析每条日志
+        # 遍历分析每条日志，根据初筛命中的攻击类型动态选择提示词。
         for i, entry in enumerate(entries[:max_logs]):
             try:
                 risk_score = entry.get('initial_risk_score', 0) or 0
@@ -919,12 +928,12 @@ def llm_analyze():
                     # reasoning_content 已在 LLMService 中处理
                     pass
                 
-                # 统计风险等级
+                # 统计风险等级，供前端摘要展示。
                 risk_level = result.get('risk_level', '正常')
                 if risk_level in risk_stats:
                     risk_stats[risk_level] += 1
                 
-                # 可疑日志加入结果（风险等级不为正常或低风险，或有攻击类型）
+                # 可疑日志加入结果（风险等级不为正常或低风险，或有攻击类型）。
                 attack_type = result.get('attack_type', '')
                 is_safe = risk_level in ['正常', '低风险'] and attack_type in ['无攻击', '正常访问', '分析异常']
                 

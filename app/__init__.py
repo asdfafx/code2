@@ -1,4 +1,9 @@
 # 项目初始化文件
+"""Flask 应用工厂和扩展实例。
+
+扩展对象在模块级创建，在 create_app 中绑定到具体应用实例，
+这样测试环境和不同配置环境可以复用同一套初始化流程。
+"""
 import os
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
@@ -19,7 +24,7 @@ login_manager.login_message = '请先登录以访问该页面'
 
 
 def create_app(config_name='default'):
-    """应用工厂函数"""
+    """按指定配置创建并返回 Flask 应用实例。"""
     app = Flask(__name__)
     
     # 加载配置
@@ -48,7 +53,7 @@ def create_app(config_name='default'):
     with app.app_context():
         db.create_all()
     
-    # 注册蓝图
+    # 注册 API 蓝图；各蓝图内部负责自己的权限校验、参数校验和业务处理。
     from .routes import auth, logs, analysis, export, admin, geo, timeline, ml, websocket, alerts, stream, multi_model
     app.register_blueprint(auth.bp, url_prefix='/api/auth')
     app.register_blueprint(logs.bp, url_prefix='/api/logs')
@@ -63,7 +68,7 @@ def create_app(config_name='default'):
     app.register_blueprint(stream.bp, url_prefix='/api/stream')
     app.register_blueprint(multi_model.bp, url_prefix='/api/multi-model')
     
-    # 注册主页面路由
+    # 注册主页面路由。后端同时托管少量模板页面，API 则统一走 /api 前缀。
     @app.route('/')
     def index():
         from flask import redirect
@@ -109,6 +114,7 @@ def create_app(config_name='default'):
     def favicon():
         from flask import send_from_directory
         try:
+            # 浏览器会自动请求 favicon；没有图标文件时返回 204，避免产生多余错误日志。
             return send_from_directory(
                 app.static_folder,
                 'favicon.ico',

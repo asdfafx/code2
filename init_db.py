@@ -1,7 +1,8 @@
 # 数据库初始化脚本
-"""
-数据库初始化脚本
-用于手动创建数据库和测试数据
+"""手动初始化数据库测试数据。
+
+该脚本用于开发或演示环境，向数据库写入一个普通用户、一次日志导入、
+多条可疑/正常日志以及对应的模拟分析结果。生产环境不要直接运行。
 """
 import sys
 import os
@@ -15,7 +16,7 @@ from datetime import datetime
 
 
 def create_test_data():
-    """创建测试数据"""
+    """创建一组覆盖常见攻击类型的测试数据。"""
     print("正在创建测试数据...")
     
     # 创建测试用户
@@ -43,7 +44,7 @@ def create_test_data():
     db.session.add(test_import)
     db.session.commit()
     
-    # 创建测试日志条目（包含可疑请求）
+    # 创建测试日志条目：既包含 SQL 注入、XSS、目录遍历等攻击样例，也保留一条正常访问作对照。
     test_logs = [
         {
             'ip_address': '192.168.1.100',
@@ -107,7 +108,7 @@ def create_test_data():
     db.session.commit()
     print(f"✓ 已创建 {len(test_logs)} 条测试日志记录")
     
-    # 创建模拟分析结果
+    # 创建模拟分析结果，使前端统计、导出和详情页面无需真实调用 LLM 也能展示数据。
     analysis_results = [
         {
             'entry_id': 1,
@@ -168,6 +169,7 @@ def create_test_data():
 
 
 if __name__ == '__main__':
+    # 脚本直接执行时创建 Flask 应用上下文，保证 SQLAlchemy 会话可用。
     app = create_app()
     
     with app.app_context():

@@ -1,4 +1,5 @@
 # 管理员路由
+"""管理员后台接口：用户管理、模型配置和系统统计。"""
 from flask import Blueprint, request, jsonify, session
 from app import db, csrf
 from app.models import User, LogImport, LLMModel, AnalysisResult
@@ -11,7 +12,7 @@ csrf.exempt(bp)
 
 
 def admin_required(f):
-    """管理员权限装饰器"""
+    """要求请求来自已登录管理员。"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
@@ -26,7 +27,7 @@ def admin_required(f):
 @bp.route('/users', methods=['GET'])
 @admin_required
 def get_users():
-    """获取用户列表"""
+    """分页获取用户列表，并附带每个用户的日志导入数量。"""
     try:
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 20, type=int)
@@ -53,12 +54,12 @@ def get_users():
 @bp.route('/users/<int:user_id>', methods=['PUT'])
 @admin_required
 def update_user(user_id):
-    """修改用户信息"""
+    """修改指定用户的邮箱、角色或启用状态。"""
     try:
         user = User.query.get_or_404(user_id)
         data = request.get_json()
         
-        # 可修改的字段
+        # 只允许更新白名单字段，避免请求体中的其他字段被误写入模型。
         if 'email' in data:
             user.email = data['email']
         if 'role' in data and data['role'] in ['admin', 'user']:
@@ -81,7 +82,7 @@ def update_user(user_id):
 @bp.route('/users/<int:user_id>', methods=['DELETE'])
 @admin_required
 def delete_user(user_id):
-    """删除用户"""
+    """删除指定用户及其级联数据。"""
     try:
         user = User.query.get_or_404(user_id)
         
@@ -102,7 +103,7 @@ def delete_user(user_id):
 @bp.route('/users/<int:user_id>/toggle', methods=['POST'])
 @admin_required
 def toggle_user_status(user_id):
-    """切换用户激活状态"""
+    """启用或禁用指定用户。"""
     try:
         user = User.query.get_or_404(user_id)
         
@@ -111,7 +112,7 @@ def toggle_user_status(user_id):
         print(f"[DEBUG] 切换用户状态 - 用户ID: {user_id}, 用户名: {user.username}")
         print(f"[DEBUG] 切换前 is_active: {old_status}")
         
-        # 不允许禁用自己
+        # 不允许禁用自己，避免管理员把自己锁在系统外。
         if user.user_id == session['user_id']:
             return jsonify({'error': '不能禁用自己'}), 400
         
@@ -153,7 +154,7 @@ def get_models():
 @bp.route('/models', methods=['POST'])
 @admin_required
 def create_model():
-    """创建模型配置"""
+    """创建一条 LLM 模型调用配置。"""
     try:
         data = request.get_json()
         
@@ -182,7 +183,7 @@ def create_model():
 @bp.route('/models/<int:model_id>', methods=['PUT'])
 @admin_required
 def update_model(model_id):
-    """更新模型配置"""
+    """更新指定模型配置的可编辑字段。"""
     try:
         model = LLMModel.query.get_or_404(model_id)
         data = request.get_json()
@@ -213,7 +214,7 @@ def update_model(model_id):
 @bp.route('/stats', methods=['GET'])
 @admin_required
 def get_admin_stats():
-    """获取系统统计信息"""
+    """获取后台首页展示的全局统计信息。"""
     try:
         # 用户统计
         total_users = User.query.count()

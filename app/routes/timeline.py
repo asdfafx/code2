@@ -1,4 +1,5 @@
 # 攻击行为时间线路由
+"""攻击行为时间线、攻击链和攻击者排行接口。"""
 from flask import Blueprint, request, jsonify, session
 from app import csrf
 from app.models import LogEntry, LogImport
@@ -24,11 +25,11 @@ def login_required(f):
 @bp.route('/ip/<ip_address>', methods=['GET'])
 @login_required
 def get_ip_timeline(ip_address):
-    """获取单个 IP 的行为时间线"""
+    """获取单个 IP 在当前用户日志中的行为时间线。"""
     try:
         import_id = request.args.get('import_id', type=int)
         
-        # 构建查询
+        # 构建查询，默认跨所有导入批次，也可用 import_id 限定范围。
         query = LogEntry.query.join(LogImport).filter(
             LogImport.user_id == session['user_id'],
             LogEntry.ip_address == ip_address
@@ -54,7 +55,7 @@ def get_ip_timeline(ip_address):
 @bp.route('/chains', methods=['GET'])
 @login_required
 def get_attack_chains():
-    """获取攻击链路"""
+    """检测当前用户日志中的连续高风险攻击链路。"""
     try:
         import_id = request.args.get('import_id', type=int)
         time_threshold = request.args.get('time_threshold', 300, type=int)
@@ -84,7 +85,7 @@ def get_attack_chains():
 @bp.route('/patterns', methods=['GET'])
 @login_required
 def get_behavior_patterns():
-    """获取行为模式分析"""
+    """获取暴力破解、扫描、分布式攻击和持续攻击等模式。"""
     try:
         import_id = request.args.get('import_id', type=int)
         
@@ -118,7 +119,7 @@ def get_behavior_patterns():
 @bp.route('/top-attackers', methods=['GET'])
 @login_required
 def get_top_attackers():
-    """获取顶级攻击者列表"""
+    """按攻击次数统计排名靠前的来源 IP。"""
     try:
         import_id = request.args.get('import_id', type=int)
         limit = request.args.get('limit', 10, type=int)
@@ -133,7 +134,7 @@ def get_top_attackers():
         
         entries = query.all()
         
-        # 按 IP 统计
+        # 按 IP 聚合请求数、攻击数、风险分和首次/最后出现时间。
         ip_stats = {}
         for entry in entries:
             ip = entry.ip_address
@@ -161,7 +162,7 @@ def get_top_attackers():
                 if ip_stats[ip]['last_seen'] is None or entry.request_time > ip_stats[ip]['last_seen']:
                     ip_stats[ip]['last_seen'] = entry.request_time
         
-        # 计算攻击率和持续时间
+        # 计算攻击率、平均风险和活跃持续时间。
         attackers = []
         for ip, stats in ip_stats.items():
             attack_rate = (stats['attack_count'] / stats['total_requests'] * 100) if stats['total_requests'] > 0 else 0

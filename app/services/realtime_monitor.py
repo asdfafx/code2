@@ -1,4 +1,5 @@
 # 实时日志监控服务
+"""维护 WebSocket 实时监控所需的连接状态和最近日志缓冲区。"""
 import time
 import threading
 from collections import deque
@@ -6,7 +7,7 @@ from datetime import datetime
 
 
 class RealTimeMonitor:
-    """实时日志监控服务"""
+    """线程安全地记录最近日志，并向已连接客户端广播。"""
     
     def __init__(self):
         self.clients = {}  # 存储连接的客户端
@@ -16,7 +17,7 @@ class RealTimeMonitor:
         self.lock = threading.Lock()
         
     def add_client(self, client_id, emit_func=None):
-        """添加客户端连接"""
+        """添加客户端连接，记录连接时间和最近活动时间。"""
         with self.lock:
             self.clients[client_id] = {
                 'emit': emit_func,
@@ -33,7 +34,7 @@ class RealTimeMonitor:
                 print(f"客户端 {client_id} 已断开")
                 
     def record_log(self, log_entry):
-        """记录日志条目到最近日志缓冲区"""
+        """记录日志条目到最近日志缓冲区，供新连接客户端回放。"""
         with self.lock:
             self.log_buffer.append({
                 'timestamp': datetime.now().isoformat(),
@@ -41,7 +42,7 @@ class RealTimeMonitor:
             })
 
     def broadcast_log(self, log_entry):
-        """向所有保存了 emit 函数的客户端广播日志条目"""
+        """向所有保存了 emit 函数的客户端广播日志条目。"""
         self.record_log(log_entry)
 
         disconnected = []
@@ -86,7 +87,7 @@ class RealTimeMonitor:
             time.sleep(1)  # 每秒检查一次
             
     def get_stats(self):
-        """获取监控统计信息"""
+        """获取当前连接数、缓冲区大小和运行状态。"""
         with self.lock:
             return {
                 'connected_clients': len(self.clients),
@@ -95,5 +96,5 @@ class RealTimeMonitor:
             }
 
 
-# 全局实例
+# 全局实例，WebSocket 路由和日志导入流程共用。
 real_time_monitor = RealTimeMonitor()

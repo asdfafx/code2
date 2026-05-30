@@ -1,13 +1,18 @@
 # IP 地理位置服务
+"""IP 地理位置查询和地域风险统计服务。
+
+服务优先查询国内接口，再降级到国际接口；结果会缓存在内存中，
+减少重复 IP 查询带来的网络开销。
+"""
 import requests
 from functools import lru_cache
 
 
 class IPGeoService:
-    """IP 地理位置查询服务"""
+    """提供单 IP 查询、国家/地区统计和异常地域检测。"""
     
     def __init__(self):
-        # 使用免费的 IP 地理位置 API
+        # 备用国际 API 列表：上游接口不可用时按顺序降级尝试。
         self.api_urls = [
             'https://ipapi.co/{ip}/json/',
             'http://ip-api.com/json/{ip}',
@@ -34,7 +39,7 @@ class IPGeoService:
         if ip_address in self.cache:
             return self.cache[ip_address]
         
-        # 本地地址
+        # 内网地址不需要访问外部 API，直接标记为本地网络。
         if ip_address.startswith(('127.', '192.168.', '10.', '172.')):
             result = {
                 'ip': ip_address,
@@ -49,13 +54,13 @@ class IPGeoService:
             return result
         
         try:
-            # 尝试使用百度 API（对中国 IP 更准确）
+            # 先尝试百度 API（对中国 IP 更准确）。
             result = self._query_baidu_api(ip_address)
             if result:
                 self.cache[ip_address] = result
                 return result
             
-            # 降级到国际 API
+            # 国内接口失败后降级到国际 API，保证非中国 IP 也能返回位置。
             result = self._query_international_api(ip_address)
             if result:
                 self.cache[ip_address] = result
@@ -90,7 +95,7 @@ class IPGeoService:
                     location_data = data['data'][0]
                     location = location_data.get('location', '')
                     
-                    # 解析位置信息
+                    # 百度接口返回的 location 是文本，需要拆分出国家/省份/城市。
                     parts = location.split()
                     country = parts[0] if len(parts) > 0 else '中国'
                     province = parts[1] if len(parts) > 1 else ''
@@ -114,7 +119,7 @@ class IPGeoService:
     def _query_international_api(self, ip_address):
         """使用国际 API 查询"""
         try:
-            # 尝试 ipapi.co
+            # 优先尝试 ipapi.co，能直接返回经纬度。
             url = f'https://ipapi.co/{ip_address}/json/'
             response = requests.get(url, timeout=5)
             
@@ -134,7 +139,7 @@ class IPGeoService:
             pass
         
         try:
-            # 尝试 ip-api.com
+            # ipapi.co 不可用时降级到 ip-api.com。
             url = f'http://ip-api.com/json/{ip_address}'
             response = requests.get(url, timeout=5)
             
@@ -196,7 +201,7 @@ class IPGeoService:
             elif isinstance(entry, dict) and entry.get('initial_risk_score', 0) > 20:
                 location_stats[country]['attacks'] += 1
         
-        # 转换 set 为 list 以便 JSON 序列化
+        # 转换 set 为 list 以便 JSON 序列化，同时保留每个国家最多 10 个城市样本。
         result = {}
         for country, stats in location_stats.items():
             result[country] = {
@@ -234,11 +239,11 @@ class IPGeoService:
                     'severity': 'high' if data['attack_rate'] > 50 else 'medium'
                 })
         
-        # 按攻击率排序
+        # 按攻击率排序，前端可以直接展示最值得关注的地区。
         anomalies.sort(key=lambda x: x['attack_rate'], reverse=True)
         
         return anomalies
 
 
-# 创建全局实例
+# 创建全局实例，复用缓存。
 ip_geo_service = IPGeoService()
