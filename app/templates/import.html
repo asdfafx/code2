@@ -1022,21 +1022,23 @@
         }
         
         // 显示正常的日志
-<!--        if (safeLogs.length > 0) {-->
-<!--            html += `<div style="padding: 20px; margin-top: 20px; background: #e8f5e9; border-radius: 8px; text-align: center;">-->
-<!--                <div style="font-size: 32px; margin-bottom: 10px;">✅</div>-->
-<!--                <div style="color: #2e7d32; font-size: 16px; font-weight: bold;">本次分析共检测 ${data.suspicious_count} 条正常日志</div>-->
-<!--                <div style="color: #666; font-size: 13px; margin-top: 5px;">已过滤为正常访问，不构成安全威胁</div>-->
-<!--            </div>`;-->
-<!--        } else if (!realThreats.length && data.total_logs > 0) {-->
-<!--            html += '<div style="padding: 30px; text-align: center; color: #4caf50; font-size: 18px;">🎉 未发现可疑行为，日志安全！</div>';-->
-<!--        } else if (!data.suspicious_logs || !data.suspicious_logs.length) {-->
-<!--            if (data.total_logs > 0) {-->
-<!--                html += '<div style="padding: 30px; text-align: center; color: #4caf50; font-size: 18px;">🎉 未发现可疑行为，日志安全！</div>';-->
-<!--            } else {-->
-<!--                html += '<div style="padding: 30px; text-align: center; color: #666; font-size: 16px;">没有可分析的日志数据</div>';-->
-<!--            }-->
-<!--        }-->
+        /*
+        if (safeLogs.length > 0) {
+            html += `<div style="padding: 20px; margin-top: 20px; background: #e8f5e9; border-radius: 8px; text-align: center;">
+                <div style="font-size: 32px; margin-bottom: 10px;">✅</div>
+                <div style="color: #2e7d32; font-size: 16px; font-weight: bold;">本次分析共检测 ${data.suspicious_count} 条正常日志</div>
+                <div style="color: #666; font-size: 13px; margin-top: 5px;">已过滤为正常访问，不构成安全威胁</div>
+            </div>`;
+        } else if (!realThreats.length && data.total_logs > 0) {
+            html += '<div style="padding: 30px; text-align: center; color: #4caf50; font-size: 18px;">🎉 未发现可疑行为，日志安全！</div>';
+        } else if (!data.suspicious_logs || !data.suspicious_logs.length) {
+            if (data.total_logs > 0) {
+                html += '<div style="padding: 30px; text-align: center; color: #4caf50; font-size: 18px;">🎉 未发现可疑行为，日志安全！</div>';
+            } else {
+                html += '<div style="padding: 30px; text-align: center; color: #666; font-size: 16px;">没有可分析的日志数据</div>';
+            }
+        }
+        */
         
         html += '</div>';
         contentDiv.innerHTML = html;
